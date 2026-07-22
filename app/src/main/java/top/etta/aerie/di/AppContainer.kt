@@ -32,5 +32,6 @@ class AppContainer(context: Context) {
         apiFactory = apiFactory::createChat,
         localStore = RoomChatLocalStore(chatDatabase.chatDao()),
         errorMapper = MobileApiErrorMapper(),
+        eventStreamFactory = apiFactory::createEventStream,
     )
 }

@@ -2,12 +2,15 @@ package top.etta.aerie.data.chat
 
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -20,6 +23,7 @@ import org.junit.Test
 import top.etta.aerie.data.remote.AuthorizedRequestExecutor
 import top.etta.aerie.data.remote.MobileApiFactory
 import top.etta.aerie.data.remote.MobileChatApi
+import top.etta.aerie.data.remote.MobileEventStream
 import top.etta.aerie.data.remote.MobileMessagePageDto
 import top.etta.aerie.data.remote.MobileRequestDto
 import top.etta.aerie.data.remote.SubmitMobileRequestDto
@@ -168,6 +172,45 @@ class NetworkChatRepositoryTest {
         assertEquals(0, server.requestCount)
     }
 
+    @Test
+    fun `event stream reconnects with persisted cursor and applies message`() = runTest {
+        server.enqueue(
+            sseResponse(
+                "id: evt_1\n" +
+                    "event: message.created\n" +
+                    "data: {\"messageId\":\"msg_1\",\"conversationId\":\"conv_1\",\"role\":\"assistant\",\"content\":\"hello\",\"createdAt\":\"2026-07-22T00:00:00Z\"}\n\n",
+            ),
+        )
+        server.enqueue(
+            sseResponse(
+                "id: evt_2\n" +
+                    "event: request.updated\n" +
+                    "data: {\"requestId\":\"req_1\",\"conversationId\":\"conv_1\",\"status\":\"completed\",\"updatedAt\":\"2026-07-22T00:01:00Z\"}\n\n",
+            ),
+        )
+        val repository = repositoryWithEventStream()
+        val job = launch {
+            repository.runEventStream(ACCOUNT_ID)
+        }
+
+        val message = local.observeMessages(ACCOUNT_ID).first { it.isNotEmpty() }
+        assertEquals("msg_1", message.single().messageId)
+        local.observeRequests(ACCOUNT_ID).first { rows ->
+            rows.any { it.requestId == "req_1" }
+        }
+        job.cancel()
+        job.join()
+
+        val firstRequest = checkNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+        val secondRequest = checkNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+        assertTrue(firstRequest.path?.endsWith("/api/mobile/v1/events") == true)
+        assertEquals("Bearer access-one", firstRequest.getHeader("Authorization"))
+        assertEquals(null, firstRequest.getHeader("Last-Event-ID"))
+        assertTrue(secondRequest.path?.endsWith("/api/mobile/v1/events") == true)
+        assertEquals("evt_1", secondRequest.getHeader("Last-Event-ID"))
+        assertEquals("evt_2", local.getCursor(ACCOUNT_ID)?.lastEventId)
+    }
+
     private fun repository(api: MobileChatApi? = null): NetworkChatRepository {
         val apiFactory = MobileApiFactory()
         return NetworkChatRepository(
@@ -177,6 +220,26 @@ class NetworkChatRepositoryTest {
             localStore = local,
             newClientRequestId = { FIXED_CLIENT_ID },
             now = { "2026-07-22T00:00:00Z" },
+        )
+    }
+
+    private fun repositoryWithEventStream(): NetworkChatRepository {
+        val api = object : StubMobileChatApi() {
+            override suspend fun messages(
+                authorization: String,
+                beforeId: String?,
+                afterId: String?,
+                limit: Int,
+            ): MobileMessagePageDto = MobileMessagePageDto(emptyList(), hasMore = false)
+        }
+        return NetworkChatRepository(
+            sessionRepository = session,
+            authorizedExecutor = AuthorizedRequestExecutor(session),
+            apiFactory = { api },
+            localStore = local,
+            eventStreamFactory = { url -> MobileEventStream(url, OkHttpClient()) },
+            sleep = {},
+            random = { 0.5 },
         )
     }
 
@@ -192,6 +255,11 @@ class NetworkChatRepositoryTest {
     private fun jsonResponse(body: String) = MockResponse()
         .setResponseCode(200)
         .setHeader("Content-Type", "application/json")
+        .setBody(body)
+
+    private fun sseResponse(body: String) = MockResponse()
+        .setResponseCode(200)
+        .setHeader("Content-Type", "text/event-stream")
         .setBody(body)
 
     private open class StubMobileChatApi : MobileChatApi {

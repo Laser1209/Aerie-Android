@@ -47,6 +47,21 @@ data class ChatSyncCursor(
     val syncedAt: String,
 )
 
+enum class ChatConnectionStatus {
+    Idle,
+    Connecting,
+    Connected,
+    Reconnecting,
+    Offline,
+}
+
+data class ChatConnectionState(
+    val accountId: String? = null,
+    val status: ChatConnectionStatus = ChatConnectionStatus.Idle,
+    val retryDelaySeconds: Int? = null,
+    val errorCode: String? = null,
+)
+
 sealed interface ChatOperationResult {
     data class Success(val request: ChatRequestRecord? = null) : ChatOperationResult
     data class AwaitingConfirmation(val clientRequestId: String) : ChatOperationResult
@@ -74,8 +89,10 @@ interface ChatRepository {
     fun observeMessages(accountId: String): Flow<List<ChatMessage>>
     fun observeRequests(accountId: String): Flow<List<ChatRequestRecord>>
     fun observePending(accountId: String): Flow<List<PendingOutbound>>
+    fun observeConnection(accountId: String): Flow<ChatConnectionState>
 
     suspend fun synchronize(accountId: String): ChatOperationResult
+    suspend fun runEventStream(accountId: String)
     suspend fun submit(accountId: String, text: String): ChatOperationResult
     suspend fun confirmPending(
         accountId: String,

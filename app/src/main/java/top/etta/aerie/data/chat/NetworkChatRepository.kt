@@ -3,7 +3,12 @@ package top.etta.aerie.data.chat
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
@@ -12,8 +17,11 @@ import top.etta.aerie.data.remote.AuthorizedRequestExecutor
 import top.etta.aerie.data.remote.MobileApiErrorMapper
 import top.etta.aerie.data.remote.MobileChatApi
 import top.etta.aerie.data.remote.MobileClientFailure
+import top.etta.aerie.data.remote.MobileEventStream
+import top.etta.aerie.data.remote.MobileEventStreamResult
 import top.etta.aerie.data.remote.MobileMessageDto
 import top.etta.aerie.data.remote.MobileRequestDto
+import top.etta.aerie.data.remote.MobileSseFrame
 import top.etta.aerie.data.remote.SessionUnavailableException
 import top.etta.aerie.data.remote.SubmitMobileRequestDto
 import top.etta.aerie.data.session.SessionRepository
@@ -25,11 +33,21 @@ class NetworkChatRepository(
     private val apiFactory: (String) -> MobileChatApi,
     private val localStore: ChatLocalStore,
     private val errorMapper: MobileApiErrorMapper = MobileApiErrorMapper(),
-    private val json: Json = Json,
+    private val json: Json = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    },
     private val newClientRequestId: () -> String = { UUID.randomUUID().toString() },
     private val now: () -> String = { Instant.now().toString() },
+    private val eventStreamFactory: (String) -> MobileEventStream = {
+        MobileEventStream(it, okhttp3.OkHttpClient())
+    },
+    private val sleep: suspend (Long) -> Unit = { delay(it) },
+    random: () -> Double = { kotlin.random.Random.nextDouble() },
 ) : ChatRepository {
     private val syncMutex = Mutex()
+    private val reconnectBackoff = SseReconnectBackoff(random)
+    private val mutableConnectionState = MutableStateFlow(ChatConnectionState())
     private var activeApiUrl: String? = null
     private var activeApi: MobileChatApi? = null
 
@@ -41,6 +59,15 @@ class NetworkChatRepository(
 
     override fun observePending(accountId: String): Flow<List<PendingOutbound>> =
         localStore.observePending(accountId)
+
+    override fun observeConnection(accountId: String): Flow<ChatConnectionState> =
+        mutableConnectionState.map { state ->
+            if (state.accountId == null || state.accountId == accountId) {
+                state.copy(accountId = accountId)
+            } else {
+                ChatConnectionState(accountId = accountId)
+            }
+        }
 
     override suspend fun synchronize(accountId: String): ChatOperationResult = syncMutex.withLock {
         try {
@@ -55,6 +82,92 @@ class NetworkChatRepository(
             ChatOperationResult.Failure(error.failure.code, error.failure.message)
         } catch (error: Throwable) {
             error.toOperationFailure()
+        }
+    }
+
+    override suspend fun runEventStream(accountId: String) {
+        requireActiveAccount(accountId)
+        var attempt = 0
+        try {
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                var lastErrorCode: String? = null
+                try {
+                    requireActiveAccount(accountId)
+                    publishConnection(accountId, ChatConnectionStatus.Connecting)
+                    synchronizeOrThrow(accountId)
+
+                    val serverUrl = sessionRepository.serverUrl.value
+                        ?: throw SessionUnavailableException()
+                    var authRetryUsed = false
+                    var opened = false
+                    var result: MobileEventStreamResult? = null
+                    while (result == null) {
+                        val accessToken = authorizedExecutor.execute { token -> token }
+                        val connection = eventStreamFactory(serverUrl).connect(
+                            accessToken = accessToken,
+                            lastEventId = localStore.getCursor(accountId)?.lastEventId,
+                            onOpen = {
+                                opened = true
+                                publishConnection(accountId, ChatConnectionStatus.Connected)
+                            },
+                            onFrame = { frame -> handleEvent(accountId, frame) },
+                        )
+                        if (connection is MobileEventStreamResult.Failed &&
+                            connection.statusCode == 401 &&
+                            !authRetryUsed
+                        ) {
+                            authRetryUsed = true
+                            if (sessionRepository.refreshAccessToken(accessToken) == null) {
+                                throw SessionUnavailableException()
+                            }
+                            continue
+                        }
+                        result = connection
+                    }
+                    val connectionResult = checkNotNull(result)
+                    if (connectionResult is MobileEventStreamResult.Failed) {
+                        val failure = connectionResult.cause?.toClientFailure()
+                            ?: MobileClientFailure("network_unavailable", "无法连接服务器，请检查网络")
+                        if (failure.code in TERMINAL_SESSION_ERRORS) {
+                            publishConnection(accountId, ChatConnectionStatus.Offline, failure.code)
+                            return
+                        }
+                        lastErrorCode = failure.code
+                    }
+                    if (opened) attempt = 0
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: SessionUnavailableException) {
+                    publishConnection(accountId, ChatConnectionStatus.Offline, "invalid_token")
+                    return
+                } catch (error: ChatStreamException) {
+                    if (error.failure.code in TERMINAL_SESSION_ERRORS) {
+                        publishConnection(accountId, ChatConnectionStatus.Offline, error.failure.code)
+                        return
+                    }
+                    lastErrorCode = error.failure.code
+                } catch (error: Throwable) {
+                    val failure = error.toClientFailure()
+                    if (failure.code in TERMINAL_SESSION_ERRORS) {
+                        publishConnection(accountId, ChatConnectionStatus.Offline, failure.code)
+                        return
+                    }
+                    lastErrorCode = failure.code
+                }
+
+                val delayMillis = reconnectBackoff.delayMillis(attempt)
+                publishConnection(
+                    accountId = accountId,
+                    status = ChatConnectionStatus.Reconnecting,
+                    errorCode = lastErrorCode,
+                    retryDelaySeconds = (delayMillis / 1_000L).coerceAtLeast(1L).toInt(),
+                )
+                sleep(delayMillis)
+                attempt = (attempt + 1).coerceAtMost(4)
+            }
+        } finally {
+            mutableConnectionState.value = ChatConnectionState()
         }
     }
 
@@ -173,6 +286,94 @@ class NetworkChatRepository(
             localStore.clearCursor(accountId)
             fullMessageSync(accountId, null)
         }
+    }
+
+    private suspend fun synchronizeOrThrow(accountId: String) {
+        when (val result = synchronize(accountId)) {
+            is ChatOperationResult.Success -> Unit
+            is ChatOperationResult.Failure -> {
+                throw ChatStreamException(
+                    MobileClientFailure(result.code, result.message),
+                )
+            }
+            is ChatOperationResult.AwaitingConfirmation -> Unit
+        }
+    }
+
+    private suspend fun handleEvent(accountId: String, frame: MobileSseFrame) {
+        syncMutex.withLock {
+            val current = localStore.getCursor(accountId)
+            val eventId = frame.id?.takeIf(::isValidEventId)
+            when (frame.type) {
+                "stream.open" -> return@withLock
+                "message.created" -> {
+                    val message = runCatching {
+                        json.decodeFromString<MobileMessageDto>(frame.data)
+                    }.getOrNull() ?: return@withLock
+                    localStore.upsertMessages(listOf(message.toDomain(accountId)))
+                    val nextMessageId = if (isAfter(current?.lastEventId, eventId)) {
+                        message.messageId
+                    } else {
+                        current?.latestMessageId ?: message.messageId
+                    }
+                    localStore.upsertCursor(
+                        nextCursor(accountId, current, eventId, nextMessageId),
+                    )
+                }
+                "request.updated" -> {
+                    val request = runCatching {
+                        json.decodeFromString<MobileRequestDto>(frame.data)
+                    }.getOrNull() ?: return@withLock
+                    localStore.upsertRequest(request.toDomain(accountId))
+                    localStore.upsertCursor(nextCursor(accountId, current, eventId))
+                }
+                "approval.pending", "file.updated" -> {
+                    runCatching { json.parseToJsonElement(frame.data) }
+                        .getOrNull() ?: return@withLock
+                    localStore.upsertCursor(nextCursor(accountId, current, eventId))
+                }
+                else -> Unit
+            }
+        }
+    }
+
+    private fun nextCursor(
+        accountId: String,
+        current: ChatSyncCursor?,
+        eventId: String?,
+        latestMessageId: String? = current?.latestMessageId,
+    ) = ChatSyncCursor(
+        accountId = accountId,
+        latestMessageId = latestMessageId,
+        lastEventId = if (isAfter(current?.lastEventId, eventId)) eventId
+        else current?.lastEventId ?: eventId,
+        syncedAt = now(),
+    )
+
+    private fun isAfter(previous: String?, next: String?): Boolean {
+        if (next == null) return false
+        if (previous == null) return true
+        return eventSequence(next) > eventSequence(previous)
+    }
+
+    private fun isValidEventId(id: String): Boolean =
+        id.startsWith("evt_") && id.removePrefix("evt_").toLongOrNull() != null
+
+    private fun eventSequence(id: String): Long =
+        id.removePrefix("evt_").toLongOrNull() ?: Long.MIN_VALUE
+
+    private fun publishConnection(
+        accountId: String,
+        status: ChatConnectionStatus,
+        errorCode: String? = null,
+        retryDelaySeconds: Int? = null,
+    ) {
+        mutableConnectionState.value = ChatConnectionState(
+            accountId = accountId,
+            status = status,
+            retryDelaySeconds = retryDelaySeconds,
+            errorCode = errorCode,
+        )
     }
 
     private suspend fun fullMessageSync(
@@ -309,6 +510,8 @@ class NetworkChatRepository(
 
     private class MappedChatException(val failure: MobileClientFailure) : Exception()
 
+    private class ChatStreamException(val failure: MobileClientFailure) : Exception()
+
     private companion object {
         const val PAGE_SIZE = 100
         const val MAX_SYNC_PAGES = 100
@@ -317,6 +520,12 @@ class NetworkChatRepository(
             "backend_unavailable",
             "chat_unavailable",
             "service_unavailable",
+        )
+        val TERMINAL_SESSION_ERRORS = setOf(
+            "invalid_token",
+            "token_expired",
+            "device_revoked",
+            "account_disabled",
         )
     }
 }

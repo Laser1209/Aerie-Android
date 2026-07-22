@@ -52,6 +52,9 @@ class MobileApiFactory(
     fun createChat(baseUrl: String): MobileChatApi = retrofit(baseUrl)
         .create(MobileChatApi::class.java)
 
+    fun createEventStream(baseUrl: String): MobileEventStream =
+        MobileEventStream(baseUrl, client)
+
     private fun retrofit(baseUrl: String): Retrofit = Retrofit.Builder()
         .baseUrl(baseUrl)
         .client(client)
