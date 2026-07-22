@@ -1,6 +1,7 @@
 package top.etta.aerie.sync
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -11,23 +12,78 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import top.etta.aerie.AerieApplication
 import top.etta.aerie.MainActivity
 import top.etta.aerie.R
+import top.etta.aerie.data.chat.ChatOperationResult
+import top.etta.aerie.data.chat.ChatRepository
 import top.etta.aerie.data.chat.ChatRequestRecord
 import top.etta.aerie.data.chat.PendingOutbound
 import top.etta.aerie.data.chat.PendingOutboundState
+import top.etta.aerie.data.session.SessionState
+
+private const val CHANNEL_ID = "aerie_data_sync"
+private const val NOTIFICATION_ID = 4101
+private const val TAG = "AerieForegroundSync"
+internal const val FOREGROUND_SERVICE_BEHAVIOR = NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
 
 enum class ForegroundWorkKind {
     Executing,
     Transferring,
     AwaitingApproval,
+}
+
+internal fun buildForegroundNotification(
+    context: Context,
+    kind: ForegroundWorkKind,
+): Notification {
+    val openAppIntent = Intent(context, MainActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+    }
+    val openApp = PendingIntent.getActivity(
+        context,
+        0,
+        openAppIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+    val statusText = when (kind) {
+        ForegroundWorkKind.Executing -> R.string.foreground_status_executing
+        ForegroundWorkKind.Transferring -> R.string.foreground_status_transferring
+        ForegroundWorkKind.AwaitingApproval -> R.string.foreground_status_awaiting_approval
+    }
+    return NotificationCompat.Builder(context, CHANNEL_ID)
+        .setSmallIcon(R.drawable.ic_stat_aerie)
+        .setContentTitle(context.getString(R.string.app_name))
+        .setContentText(context.getString(statusText))
+        .setContentIntent(openApp)
+        .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        .setPriority(NotificationCompat.PRIORITY_LOW)
+        .setOnlyAlertOnce(true)
+        .setOngoing(true)
+        .setSilent(true)
+        .setForegroundServiceBehavior(FOREGROUND_SERVICE_BEHAVIOR)
+        .build()
 }
 
 data class ForegroundWorkState(
@@ -54,6 +110,28 @@ fun foregroundWorkState(
     activeRequestCount = requests.count { it.status in ACTIVE_REQUEST_STATUSES },
     activeTransferCount = pendingOutbound.count { it.state == PendingOutboundState.Sending },
 )
+
+internal enum class ForegroundExecutionPollDecision {
+    Continue,
+    Stop,
+}
+
+internal suspend fun pollForegroundExecution(
+    readState: suspend () -> ForegroundWorkState,
+    refreshActiveRequests: suspend () -> ChatOperationResult,
+): ForegroundExecutionPollDecision {
+    val beforeSync = readState()
+    if (!beforeSync.isActive) return ForegroundExecutionPollDecision.Stop
+    if (beforeSync.activeRequestCount > 0) {
+        refreshActiveRequests()
+    }
+
+    return if (readState().isActive) {
+        ForegroundExecutionPollDecision.Continue
+    } else {
+        ForegroundExecutionPollDecision.Stop
+    }
+}
 
 enum class ForegroundSyncCapability {
     Available,
@@ -140,6 +218,9 @@ class AndroidForegroundSyncController(context: Context) : ForegroundSyncControll
 }
 
 class AerieForegroundService : Service() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var executionMonitor: Job? = null
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -155,7 +236,14 @@ class AerieForegroundService : Service() {
             ?.let { stored -> ForegroundWorkKind.entries.firstOrNull { it.name == stored } }
             ?: ForegroundWorkKind.Executing
         startWithNotification(kind)
+        ensureExecutionMonitor()
         return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        executionMonitor?.cancel()
+        serviceScope.cancel()
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -167,31 +255,7 @@ class AerieForegroundService : Service() {
     }
 
     private fun startWithNotification(kind: ForegroundWorkKind) {
-        val openAppIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        val openApp = PendingIntent.getActivity(
-            this,
-            0,
-            openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val statusText = when (kind) {
-            ForegroundWorkKind.Executing -> R.string.foreground_status_executing
-            ForegroundWorkKind.Transferring -> R.string.foreground_status_transferring
-            ForegroundWorkKind.AwaitingApproval -> R.string.foreground_status_awaiting_approval
-        }
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_aerie)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(statusText))
-            .setContentIntent(openApp)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOnlyAlertOnce(true)
-            .setOngoing(true)
-            .setSilent(true)
-            .build()
+        val notification = buildForegroundNotification(this, kind)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
@@ -201,6 +265,69 @@ class AerieForegroundService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+    }
+
+    private fun ensureExecutionMonitor() {
+        if (executionMonitor?.isActive == true) return
+        executionMonitor = serviceScope.launch {
+            Log.i(TAG, "foreground work monitor started")
+            monitorExecutionUntilTerminal()
+        }
+    }
+
+    private suspend fun monitorExecutionUntilTerminal() {
+        val container = (application as? AerieApplication)?.appContainer
+            ?: return stopAfterExecution()
+        var session = (container.sessionRepository.session.value as? SessionState.SignedIn)?.session
+        if (session == null && container.sessionRepository.restoreSession()) {
+            session = (container.sessionRepository.session.value as? SessionState.SignedIn)?.session
+        }
+        val activeSession = session?.takeUnless { it.isLocalPreview }
+            ?: return stopAfterExecution()
+
+        while (currentCoroutineContext().isActive) {
+            val decision = try {
+                withTimeoutOrNull(EXECUTION_SYNC_TIMEOUT_MILLIS) {
+                    pollForegroundExecution(
+                        readState = {
+                            readForegroundWorkState(container.chatRepository, activeSession.accountId)
+                        },
+                        refreshActiveRequests = {
+                            container.chatRepository.refreshActiveRequests(activeSession.accountId)
+                        },
+                    )
+                } ?: run {
+                    Log.w(TAG, "foreground request refresh timed out")
+                    ForegroundExecutionPollDecision.Continue
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.w(TAG, "foreground request refresh failed: ${error::class.java.simpleName}")
+                ForegroundExecutionPollDecision.Continue
+            }
+            when (decision) {
+                ForegroundExecutionPollDecision.Stop -> {
+                    Log.i(TAG, "foreground work reached terminal state")
+                    return stopAfterExecution()
+                }
+                ForegroundExecutionPollDecision.Continue -> delay(EXECUTION_POLL_INTERVAL_MILLIS)
+            }
+        }
+    }
+
+    private suspend fun readForegroundWorkState(
+        repository: ChatRepository,
+        accountId: String,
+    ): ForegroundWorkState = combine(
+        repository.observeRequests(accountId),
+        repository.observePending(accountId),
+        ::foregroundWorkState,
+    ).first()
+
+    private fun stopAfterExecution() {
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun createNotificationChannel() {
@@ -216,8 +343,8 @@ class AerieForegroundService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "aerie_data_sync"
-        private const val NOTIFICATION_ID = 4101
+        internal const val EXECUTION_POLL_INTERVAL_MILLIS = 5_000L
+        internal const val EXECUTION_SYNC_TIMEOUT_MILLIS = 20_000L
         private const val ACTION_START = "top.etta.aerie.action.START_DATA_SYNC"
         private const val ACTION_STOP = "top.etta.aerie.action.STOP_DATA_SYNC"
         private const val EXTRA_KIND = "foreground_work_kind"

@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RoomChatMigrationTest {
     @Test
-    fun migrationToV2PreservesMessagesAndForcesResync() = runBlocking {
+    fun migrationFromV1ToV3PreservesMessagesAndForcesResync() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val databaseName = "migration-${UUID.randomUUID()}.db"
         val databaseFile = context.getDatabasePath(databaseName)
@@ -26,7 +26,34 @@ class RoomChatMigrationTest {
             context,
             AerieChatDatabase::class.java,
             databaseName,
-        ).addMigrations(MIGRATION_1_2).allowMainThreadQueries().build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).allowMainThreadQueries().build()
+        try {
+            val store = RoomChatLocalStore(database.chatDao())
+            assertEquals(
+                listOf("msg-first", "msg-second"),
+                store.observeMessages("acct_owner").first().map { it.messageId },
+            )
+            assertEquals(1L, store.observeMessages("acct_owner").first()[0].messageOrder)
+            assertEquals(2L, store.observeMessages("acct_owner").first()[1].messageOrder)
+            assertNull(store.getCursor("acct_owner"))
+        } finally {
+            database.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
+    fun migrationFromV2ToV3PreservesMessagesAndClearsPartialSyncCursor() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val databaseName = "migration-${UUID.randomUUID()}.db"
+        val databaseFile = context.getDatabasePath(databaseName)
+        createV2Database(databaseFile)
+
+        val database = Room.databaseBuilder(
+            context,
+            AerieChatDatabase::class.java,
+            databaseName,
+        ).addMigrations(MIGRATION_2_3).allowMainThreadQueries().build()
         try {
             val store = RoomChatLocalStore(database.chatDao())
             assertEquals(
@@ -134,6 +161,28 @@ class RoomChatMigrationTest {
                    VALUES ('acct_owner', 'msg-second', 'evt_9', '2026-07-22T13:00:28Z')""",
             )
             database.version = 1
+        }
+    }
+
+    private fun createV2Database(file: File) {
+        createV1Database(file)
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { database ->
+            database.execSQL(
+                "ALTER TABLE chat_messages ADD COLUMN messageOrder INTEGER NOT NULL DEFAULT 0",
+            )
+            database.execSQL(
+                "UPDATE chat_messages SET messageOrder = rowid WHERE messageOrder = 0",
+            )
+            database.execSQL("DROP INDEX IF EXISTS index_chat_messages_accountId_createdAt")
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_chat_messages_accountId_messageOrder " +
+                    "ON chat_messages (accountId, messageOrder)",
+            )
+            database.execSQL(
+                "UPDATE room_master_table SET identity_hash = '172abb8cb395065a35a50cdcec10654a' " +
+                    "WHERE id = 42",
+            )
+            database.version = 2
         }
     }
 }

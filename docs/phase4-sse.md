@@ -2,13 +2,13 @@
 
 Status: verified
 
-Date: 2026-07-22
+Date: 2026-07-23
 
 ## Scope
 
-This batch adds the Android side of the frozen mobile event contract. It does
-not claim that the Compose chat surface, foreground service, file transfer, or
-real-device business acceptance is complete.
+This batch adds the Android side of the frozen mobile event contract. Compose,
+foreground-service, and real-device chat acceptance are now closed; file
+transfer remains a later phase.
 
 ## Implemented
 
@@ -52,13 +52,9 @@ Coverage includes:
 - MockWebServer disconnect, Room-store event application, and reconnect with
   the persisted `evt_1` cursor.
 
-The vivo `V2516A` executed the integrated instrumented suite after the ordering
-contract was added: 5 tests passed with 0 failures, errors, or skips. No server
-database or Cloudflare state was changed. A real authenticated SSE session is
-still pending because the current secure-session store is empty.
-
-## Remaining Gate
-
-- Bind the connection and Room flows to the authenticated ViewModel.
-- Render messages, pending confirmations, and request actions in Compose.
-- Run the integrated APK on vivo `V2516A` with the APK-retention test settings.
+The final retained-data APK restored the real owner session. A new request was
+submitted, the app was backgrounded, and Room converged to the server's complete
+1188-message ordered collection. The active request reached terminal state,
+the foreground monitor stopped, and the next cold start remained authenticated.
+The final device suite passed 9 tests with no failures, errors, or skips. No
+Cloudflare state was changed; Tunnel work remains Phase 7.

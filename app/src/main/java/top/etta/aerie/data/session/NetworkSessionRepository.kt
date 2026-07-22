@@ -67,6 +67,9 @@ class NetworkSessionRepository(
 
     override suspend fun refreshAccessToken(staleAccessToken: String?): String? = authMutex.withLock {
         val current = mutableAccessToken.value
+        if (staleAccessToken == null && current != null) {
+            return@withLock current
+        }
         if (staleAccessToken != null && current != null && current != staleAccessToken) {
             return@withLock current
         }

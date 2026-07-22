@@ -2,14 +2,14 @@
 
 Status: verified
 
-Date: 2026-07-22
+Date: 2026-07-23
 
 ## Scope
 
 This batch binds the authenticated chat repository to the Compose shell. The
-screen is now driven by Room and connection state rather than placeholder text.
-Foreground services, notifications, file transfer, approvals, and real-device
-business acceptance remain separate gates.
+screen is driven by Room and connection state rather than placeholder text.
+File transfer and approvals remain later phases; foreground notification and
+real-device chat acceptance are now closed below.
 
 ## Implemented
 
@@ -49,8 +49,15 @@ passed with 0 failures, errors, or skips. The current app opens at login because
 the secure-session preference file is empty; no credential or token was entered
 by automation.
 
-## Remaining Gate
+## Real-Device Closeout
 
-- Capture a real foreground `dataSync` notification during a long-running task.
-- Re-authenticate the owner and verify production history, one request,
-  desktop/mobile sharing, and SSE recovery with the retained APK.
+- The retained owner session opened directly on the main Compose shell after
+  the final APK install; the login form was absent and owner navigation was
+  present.
+- A real request was submitted from the Compose input, the app was returned to
+  the launcher, and the server plus Room converged to the same 1188-message
+  timeline without UI intervention.
+- The foreground notification appeared while work was active, contained only
+  product/status text, and had no active `NotificationRecord` after terminal
+  state.
+- The final cold-start UI test and all other instrumented tests passed 9/9.

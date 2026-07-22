@@ -1,14 +1,14 @@
 # Phase 4 Android Foundation
 
-Status: implementing
+Status: verified
 
-Date: 2026-07-22
+Date: 2026-07-23
 
 ## Scope
 
 This document began with the buildable Android application foundation and now
-also records verified production authentication. It does not claim persistent
-chat until history, requests, and SSE pass the real-device gate.
+records verified production authentication plus the final Phase 4 real-device
+chat, recovery, and background-execution gate.
 
 Implemented:
 
@@ -29,11 +29,10 @@ Implemented:
 - Release HTTPS enforcement; Debug cleartext is limited by client validation to
   localhost, `127.0.0.1`, and emulator `10.0.2.2` test endpoints.
 
-Not yet claimed:
+Deferred beyond Phase 4:
 
-- Persistent chat history, request execution, SSE, files, approvals, or
-  background execution.
-- Authenticated message and request synchronization on the target phone.
+- File transfer, mobile approvals, Cloudflare Tunnel, signed distribution, and
+  QQ-disabled end-to-end release acceptance.
 
 ## Evidence
 
@@ -95,8 +94,9 @@ Not yet claimed:
   pairing-code single-use behavior. Android
   `:app:testDebugUnitTest --rerun-tasks` executed all 11 JVM tests with zero
   failures, errors, or skips.
-- This evidence verifies authentication and session recovery only. Persistent
-  history, request submission/status, and SSE are still incomplete.
+- At that authentication checkpoint, the evidence covered session recovery
+  only; persistent history, request status, and SSE were closed by the later
+  Phase 4 evidence below.
 
 ## Release Build Evidence
 
@@ -128,9 +128,22 @@ the client uses it as the primary display order for same-timestamp replies.
 The v1 to v2 migration preserves cached messages and clears synchronization
 cursors so the next authenticated sync repopulates authoritative order values.
 
-The current Debug APK is 65,937,058 bytes with SHA-256
-`49ECB0238C92F996F7B5DF026FB878AB087D49654EF77DB96E029352BFD84C7C`.
-The vivo `V2516A` executed the retained-APK instrumented suite: 5 tests passed
-with 0 failures, errors, or skips. The installed app currently has an empty
-secure-session preference file and opens at login; production history and SSE
-acceptance remain pending owner re-authentication.
+The final Debug APK is 66,122,092 bytes with SHA-256
+`E8CC4C7A591CB764E47028856DEA5161868714158AE2AA143664DB7168E4C08E`.
+It was installed over the retained application on vivo `V2516A`; private data
+and the Keystore-backed owner session survived, cold start restored the owner
+screen, and the process logged no fatal exception or credential/token keyword.
+
+## Phase 4 Closeout
+
+- Android JVM tests: 38 passed, 0 failures/errors/skips.
+- Device instrumentation: 9 passed, 0 failures/errors/skips.
+- Debug and Release Lint: successful with no reported issue.
+- Room v3 and the server contain the same 1188-message ordered ID sequence,
+  including the original seven-part reply and a new 22-message turn.
+- After removal of the standard device-idle whitelist, the vivo OEM
+  background-battery permission alone allowed a real request to finish in the
+  background; the status-only foreground monitor then removed its service and
+  notification without a `fast_freezer` event.
+- One `aerie_periodic_status_sync` job remains `ENQUEUED` at a 15-minute
+  interval. Phase 4 is verified; later-phase capabilities are not claimed.

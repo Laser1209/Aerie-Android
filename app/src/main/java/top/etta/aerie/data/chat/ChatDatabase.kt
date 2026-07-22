@@ -156,7 +156,7 @@ interface ChatDao {
         PendingOutboundEntity::class,
         ChatSyncCursorEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AerieChatDatabase : RoomDatabase() {
@@ -167,7 +167,7 @@ abstract class AerieChatDatabase : RoomDatabase() {
             context.applicationContext,
             AerieChatDatabase::class.java,
             "aerie_mobile_chat.db",
-        ).addMigrations(MIGRATION_1_2).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }
 
@@ -184,6 +184,12 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
             "CREATE INDEX IF NOT EXISTS index_chat_messages_accountId_messageOrder " +
                 "ON chat_messages (accountId, messageOrder)",
         )
+        database.execSQL("DELETE FROM chat_sync_cursors")
+    }
+}
+
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("DELETE FROM chat_sync_cursors")
     }
 }

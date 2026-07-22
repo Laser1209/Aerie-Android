@@ -107,6 +107,32 @@ class NetworkChatRepositoryTest {
     }
 
     @Test
+    fun `active request refresh converges status without loading messages`() = runTest {
+        server.enqueue(jsonResponse(requestJson("req_active", "completed")))
+        local.upsertRequest(
+            ChatRequestRecord(
+                accountId = ACCOUNT_ID,
+                requestId = "req_active",
+                conversationId = "conv_1",
+                clientRequestId = "client_1",
+                status = "running",
+                errorCode = null,
+                retryOfRequestId = null,
+                createdAt = "2026-07-22T00:00:00Z",
+                updatedAt = null,
+                completedAt = null,
+            ),
+        )
+
+        val result = repository().refreshActiveRequests(ACCOUNT_ID)
+
+        assertTrue(result is ChatOperationResult.Success)
+        assertEquals("completed", local.observeRequests(ACCOUNT_ID).first().single().status)
+        assertEquals("/api/mobile/v1/requests/req_active", server.takeRequest().path)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
     fun `synchronize preserves server order when message timestamps match`() = runTest {
         server.enqueue(
             jsonResponse(

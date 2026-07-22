@@ -88,6 +88,21 @@ class NetworkSessionRepositoryTest {
     }
 
     @Test
+    fun `non stale refresh reuses the current access token without rotating`() = runTest {
+        server.enqueue(jsonResponse(tokenResponse("access-one", "refresh-one")))
+        val repository = repository()
+        assertEquals(LoginResult.Success, repository.login(validInput()))
+
+        val results = coroutineScope {
+            List(12) { async { repository.refreshAccessToken() } }.awaitAll()
+        }
+
+        assertTrue(results.all { it == "access-one" })
+        assertEquals("refresh-one", secureStore.value?.refreshToken)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
     fun `stable backend error is mapped without exposing server detail`() = runTest {
         server.enqueue(
             MockResponse()

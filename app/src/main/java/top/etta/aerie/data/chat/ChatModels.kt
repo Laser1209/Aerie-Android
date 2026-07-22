@@ -93,6 +93,7 @@ interface ChatRepository {
     fun observeConnection(accountId: String): Flow<ChatConnectionState>
 
     suspend fun synchronize(accountId: String): ChatOperationResult
+    suspend fun refreshActiveRequests(accountId: String): ChatOperationResult = synchronize(accountId)
     suspend fun runEventStream(accountId: String)
     suspend fun submit(accountId: String, text: String): ChatOperationResult
     suspend fun confirmPending(

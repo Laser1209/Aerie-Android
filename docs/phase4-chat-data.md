@@ -1,16 +1,16 @@
 # Phase 4 Persistent Chat Data Layer
 
-Status: implementing
+Status: verified
 
 Data-layer subsection: verified
 
-Date: 2026-07-22
+Date: 2026-07-23
 
 ## Scope
 
 This batch implements the Android persistence and request contracts used by the
-chat and task UI and the production mobile gateway. Real production business
-acceptance remains a separate gate.
+chat and task UI and the production mobile gateway. The final production
+business acceptance is recorded below.
 
 ## Implemented
 
@@ -78,15 +78,22 @@ Final JUnit evidence reports 5 tests, 0 failures, 0 errors, and 0 skips. The
 manual `am instrument` output records all five tests as `PASSED`; the APKs were
 not uninstalled.
 
-The current installed app has an empty secure-session preference file after the
-test/build cycle and therefore opens at the login screen. No password, pairing
-code, access token, or refresh token was read or entered by the test process.
+At that earlier test/build checkpoint, the installed app had an empty
+secure-session preference file and opened at the login screen. No password,
+pairing code, access token, or refresh token was read or entered by the test
+process. The later authenticated closeout is recorded below.
 
-## Remaining Gate
+## Real-Device Closeout
 
-- Re-authenticate the owner through the phone's secure keyboard.
-- Install/retain the integrated APK and verify production history, including a
-  same-timestamp multi-segment response displayed as user then all assistant
-  segments.
-- Verify one real request, desktop/mobile timeline sharing, process restart,
-  SSE recovery, and a captured foreground notification for a long-running task.
+- The final retained-data APK restored the existing owner session and upgraded
+  the production cache to Room v3 without clearing messages.
+- The server and Room each contain 1188 unique messages. Missing and extra IDs,
+  `messageOrder` mismatches, and role mismatches are all zero; the complete
+  ordered ID sequences are equal.
+- The reported seven-part same-timestamp reply remains contiguous at
+  `messageOrder=1850..1856`. A new background turn contains one user message
+  and 21 assistant messages at `1864..1885`, all present on the phone.
+- The new request reached `completed` in Room while the app remained on the
+  launcher. Reopening the app was not required to repair the collection.
+- v1-to-v3 and v2-to-v3 migration tests, ordering, account isolation, and
+  interrupted-send recovery passed in the 9-test device suite.

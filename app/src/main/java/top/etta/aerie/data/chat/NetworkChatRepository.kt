@@ -46,6 +46,7 @@ class NetworkChatRepository(
     random: () -> Double = { kotlin.random.Random.nextDouble() },
 ) : ChatRepository {
     private val syncMutex = Mutex()
+    private val activeRequestSyncMutex = Mutex()
     private val reconnectBackoff = SseReconnectBackoff(random)
     private val mutableConnectionState = MutableStateFlow(ChatConnectionState())
     private var activeApiUrl: String? = null
@@ -83,6 +84,16 @@ class NetworkChatRepository(
         } catch (error: Throwable) {
             error.toOperationFailure()
         }
+    }
+
+    override suspend fun refreshActiveRequests(accountId: String): ChatOperationResult = try {
+        requireActiveAccount(accountId)
+        synchronizeActiveRequests(accountId)
+        ChatOperationResult.Success()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        error.toOperationFailure()
     }
 
     override suspend fun runEventStream(accountId: String) {
@@ -437,11 +448,13 @@ class NetworkChatRepository(
     }
 
     private suspend fun synchronizeActiveRequests(accountId: String) {
-        localStore.activeRequests(accountId).forEach { existing ->
-            val response = authorizedCall { api, authorization ->
-                api.request(authorization, existing.requestId)
+        activeRequestSyncMutex.withLock {
+            localStore.activeRequests(accountId).forEach { existing ->
+                val response = authorizedCall { api, authorization ->
+                    api.request(authorization, existing.requestId)
+                }
+                localStore.upsertRequest(response.toDomain(accountId))
             }
-            localStore.upsertRequest(response.toDomain(accountId))
         }
     }
 

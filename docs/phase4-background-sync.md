@@ -2,13 +2,14 @@
 
 Status: verified
 
-Date: 2026-07-22
+Date: 2026-07-23
 
 ## Scope
 
 This batch implements the master plan's non-real-time background status check
 for an already authorized remote session. It does not replace SSE while the app
-is active, send an offline command, or complete the Phase 4 real-device gate.
+is active or send an offline command. The 2026-07-23 addendum records the final
+Phase 4 real-device gate.
 
 ## Implemented Contract
 
@@ -79,34 +80,37 @@ Artifacts:
   fixed owner/test credential, private-key, JWT, OpenAI key, GitHub PAT, and
   credential-bearing URL content hits were all zero.
 
-## Remaining Real-Device Gate
+## Real-Device Closeout
 
-No ADB, installation, credential entry, or device-session inspection occurred
-in this batch because the phone was intentionally disconnected. The next
-real-device batch must verify owner login, Room v2 full convergence, all seven
-segments of the reported long response in `messageOrder`, foreground
-notification privacy during a long task, and the persisted WorkManager job.
+The final retained-data install and background acceptance were completed on
+the target vivo `V2516A` running Android 16:
 
-## Prepared Instrumented Contract
+- The installed main APK and local Debug APK have the same SHA-256:
+  `E8CC4C7A591CB764E47028856DEA5161868714158AE2AA143664DB7168E4C08E`.
+- Aerie private data remained `1754 KB` across the install and `1758 KB` after
+  the final test run. The encrypted session, Room database, and WorkManager
+  database remained present, and cold start restored the owner screen without
+  another login.
+- The temporary Android device-idle whitelist was removed. With only the vivo
+  "allow background battery use" setting retained, request
+  `req_6c3f7847104cda2e9e4fad9c5c5ebb71` completed while the app was on the
+  launcher. The foreground monitor started at `02:37:48.583`, observed terminal
+  state at `02:38:15.556`, then removed its service and notification.
+- System logs contained no Aerie `fast_freezer` event. The active notification
+  record count after completion was zero; the notification builder exposes only
+  the product name and fixed status text.
+- Room v3 held `1188` unique messages and exactly matched the server's ordered
+  ID, `messageOrder`, and role sequence. The original seven-part response at
+  orders `1850..1856` and the new 22-message turn at `1864..1885` were complete
+  and contiguous.
+- The installed and local Test APK SHA-256 values both equal
+  `6DC07100764AC3D00410564873BF9FC2AACA3AE164A8CE437D532F01DECC16F5`.
+  Manual instrumentation passed all 9 tests with no failures, errors, or skips.
+- The production WorkManager database contains one
+  `aerie_periodic_status_sync` row in `ENQUEUED` state, with a `900000ms`
+  interval, `300000ms` retry backoff, and zero run attempts.
 
-The follow-up device test package now includes two WorkManager tests using
-`androidx.work:work-testing:2.10.1`. They verify that repeated scheduling keeps
-one enqueued unique job with the expected tag and that cancellation transitions
-that job to `CANCELLED`. The tests also lock the 15-minute interval and
-five-minute retry-backoff constants. Test databases are explicitly closed after
-each method so the seven-test device suite can run in one instrumentation
-process.
-
-Desktop-only preparation evidence:
-
-- `:app:assembleDebugAndroidTest`: `BUILD SUCCESSFUL`.
-- `:app:lintDebug`: `BUILD SUCCESSFUL`; `No issues found`.
-- Existing JVM regression: 33 tests, 0 failures, errors, or skips.
-- Android test methods prepared: 7 total, including 2 WorkManager tests.
-- Test APK: 2,355,262 bytes; application ID `top.etta.aerie.test`, target
-  package `top.etta.aerie`.
-- Test APK SHA-256:
-  `495855344DCB6F73B4443B80CF963C6279B2EE90EA8CD0DFDC5EBF4223E2C11C`.
-
-These two tests are compiled but not marked passed. Their execution remains
-blocked on an explicit confirmation that the target phone is connected.
+Final desktop evidence is 38/38 JVM tests, successful Debug and Release Lint,
+54/54 related server tests, and 632/632 full server tests. Phase 4 is verified;
+file transfer, approvals, Cloudflare Tunnel, and signed release remain later
+phases.
