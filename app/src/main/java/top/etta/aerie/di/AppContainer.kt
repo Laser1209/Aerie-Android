@@ -14,7 +14,9 @@ import top.etta.aerie.data.security.AndroidKeystoreSessionStore
 import top.etta.aerie.data.session.NetworkSessionRepository
 import top.etta.aerie.data.session.SessionRepository
 import top.etta.aerie.sync.AndroidForegroundSyncController
+import top.etta.aerie.sync.AndroidPeriodicSyncScheduler
 import top.etta.aerie.sync.ForegroundSyncController
+import top.etta.aerie.sync.PeriodicSyncScheduler
 
 class AppContainer(context: Context) {
     val applicationContext: Context = context.applicationContext
@@ -38,4 +40,6 @@ class AppContainer(context: Context) {
     )
     val foregroundSyncController: ForegroundSyncController =
         AndroidForegroundSyncController(applicationContext)
+    val periodicSyncScheduler: PeriodicSyncScheduler =
+        AndroidPeriodicSyncScheduler(applicationContext)
 }

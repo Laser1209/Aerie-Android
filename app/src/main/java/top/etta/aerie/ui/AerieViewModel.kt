@@ -34,6 +34,8 @@ import top.etta.aerie.data.session.UserRole
 import top.etta.aerie.sync.ForegroundSyncController
 import top.etta.aerie.sync.ForegroundSyncCapability
 import top.etta.aerie.sync.NoOpForegroundSyncController
+import top.etta.aerie.sync.NoOpPeriodicSyncScheduler
+import top.etta.aerie.sync.PeriodicSyncScheduler
 import top.etta.aerie.sync.foregroundWorkState
 
 data class LoginUiState(
@@ -53,6 +55,8 @@ class AerieViewModel(
     private val chatRepository: ChatRepository,
     private val foregroundSyncController: ForegroundSyncController =
         NoOpForegroundSyncController,
+    private val periodicSyncScheduler: PeriodicSyncScheduler =
+        NoOpPeriodicSyncScheduler,
 ) : ViewModel() {
     val session = sessionRepository.session
     val foregroundSyncCapability: StateFlow<ForegroundSyncCapability> =
@@ -118,6 +122,23 @@ class AerieViewModel(
             sessionRepository.restoreSession()
         }
         viewModelScope.launch {
+            var hadRemoteSession = false
+            sessionRepository.session.collect { state ->
+                val activeSession = (state as? SessionState.SignedIn)?.session
+                val hasRemoteSession = activeSession?.isLocalPreview == false
+                when {
+                    hasRemoteSession -> {
+                        hadRemoteSession = true
+                        periodicSyncScheduler.ensureScheduled()
+                    }
+                    hadRemoteSession || activeSession?.isLocalPreview == true -> {
+                        hadRemoteSession = false
+                        periodicSyncScheduler.cancel()
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
             sessionRepository.session
                 .map { state ->
                     (state as? SessionState.SignedIn)?.session
@@ -156,6 +177,7 @@ class AerieViewModel(
     }
 
     fun enterPreview(role: UserRole) {
+        periodicSyncScheduler.cancel()
         sessionRepository.enterLocalPreview(role)
         mutableLoginUiState.value = LoginUiState()
         mutableChatActionState.value = ChatActionUiState()
@@ -210,6 +232,7 @@ class AerieViewModel(
     }
 
     fun logout() {
+        periodicSyncScheduler.cancel()
         viewModelScope.launch {
             sessionRepository.logout()
         }
@@ -250,6 +273,7 @@ class AerieViewModelFactory(
             sessionRepository = appContainer.sessionRepository,
             chatRepository = appContainer.chatRepository,
             foregroundSyncController = appContainer.foregroundSyncController,
+            periodicSyncScheduler = appContainer.periodicSyncScheduler,
         ) as T
     }
 }

@@ -30,17 +30,20 @@ import top.etta.aerie.data.session.LoginResult
 import top.etta.aerie.data.session.SessionRepository
 import top.etta.aerie.data.session.SessionState
 import top.etta.aerie.data.session.UserRole
+import top.etta.aerie.sync.PeriodicSyncScheduler
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AerieViewModelTest {
     private lateinit var session: FakeSessionRepository
     private lateinit var chat: FakeChatRepository
+    private lateinit var periodicSync: FakePeriodicSyncScheduler
 
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         session = FakeSessionRepository()
         chat = FakeChatRepository()
+        periodicSync = FakePeriodicSyncScheduler()
     }
 
     @After
@@ -80,6 +83,24 @@ class AerieViewModelTest {
         chat.messagesFor("acct-guest").value = listOf(message("acct-guest", "guest history"))
         advanceUntilIdle()
         assertEquals("guest history", viewModel.chatMessages.value.single().content)
+    }
+
+    @Test
+    fun `remote session schedules periodic sync and logout cancels it`() = runTest {
+        val viewModel = AerieViewModel(
+            sessionRepository = session,
+            chatRepository = chat,
+            periodicSyncScheduler = periodicSync,
+        )
+        advanceUntilIdle()
+
+        assertEquals(1, periodicSync.scheduleCalls)
+
+        viewModel.logout()
+        advanceUntilIdle()
+
+        assertEquals(0, periodicSync.activeSchedules)
+        assertEquals(true, periodicSync.cancelCalls > 0)
     }
 
     private fun message(accountId: String, content: String) = ChatMessage(
@@ -156,5 +177,21 @@ class AerieViewModelTest {
 
         override suspend fun retry(accountId: String, requestId: String): ChatOperationResult =
             ChatOperationResult.Success()
+    }
+
+    private class FakePeriodicSyncScheduler : PeriodicSyncScheduler {
+        var scheduleCalls = 0
+        var cancelCalls = 0
+        var activeSchedules = 0
+
+        override fun ensureScheduled() {
+            scheduleCalls += 1
+            activeSchedules = 1
+        }
+
+        override fun cancel() {
+            cancelCalls += 1
+            activeSchedules = 0
+        }
     }
 }
