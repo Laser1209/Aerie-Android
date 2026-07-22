@@ -12,6 +12,7 @@ import retrofit2.http.Query
 @Serializable
 data class MobileMessageDto(
     val messageId: String,
+    val messageOrder: Long,
     val conversationId: String,
     val turnId: String? = null,
     val role: String,

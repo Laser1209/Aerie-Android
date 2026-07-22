@@ -85,6 +85,7 @@ class AerieViewModelTest {
     private fun message(accountId: String, content: String) = ChatMessage(
         accountId = accountId,
         messageId = "msg-$accountId",
+        messageOrder = 1,
         conversationId = "conv-$accountId",
         turnId = null,
         role = "assistant",

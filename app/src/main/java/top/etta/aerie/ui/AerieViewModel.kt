@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -30,6 +31,10 @@ import top.etta.aerie.data.session.LoginResult
 import top.etta.aerie.data.session.SessionRepository
 import top.etta.aerie.data.session.SessionState
 import top.etta.aerie.data.session.UserRole
+import top.etta.aerie.sync.ForegroundSyncController
+import top.etta.aerie.sync.ForegroundSyncCapability
+import top.etta.aerie.sync.NoOpForegroundSyncController
+import top.etta.aerie.sync.foregroundWorkState
 
 data class LoginUiState(
     val isSubmitting: Boolean = false,
@@ -46,8 +51,12 @@ data class ChatActionUiState(
 class AerieViewModel(
     private val sessionRepository: SessionRepository,
     private val chatRepository: ChatRepository,
+    private val foregroundSyncController: ForegroundSyncController =
+        NoOpForegroundSyncController,
 ) : ViewModel() {
     val session = sessionRepository.session
+    val foregroundSyncCapability: StateFlow<ForegroundSyncCapability> =
+        foregroundSyncController.capability
 
     private val mutableLoginUiState = MutableStateFlow(LoginUiState())
     val loginUiState: StateFlow<LoginUiState> = mutableLoginUiState.asStateFlow()
@@ -127,6 +136,11 @@ class AerieViewModel(
                         }
                     }
                 }
+        }
+        viewModelScope.launch {
+            combine(chatRequests, pendingOutbound, ::foregroundWorkState)
+                .distinctUntilChanged()
+                .collect { state -> foregroundSyncController.update(state) }
         }
     }
 
@@ -235,6 +249,7 @@ class AerieViewModelFactory(
         return AerieViewModel(
             sessionRepository = appContainer.sessionRepository,
             chatRepository = appContainer.chatRepository,
+            foregroundSyncController = appContainer.foregroundSyncController,
         ) as T
     }
 }

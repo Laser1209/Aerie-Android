@@ -483,6 +483,7 @@ class NetworkChatRepository(
     private fun MobileMessageDto.toDomain(accountId: String) = ChatMessage(
         accountId = accountId,
         messageId = messageId,
+        messageOrder = messageOrder,
         conversationId = conversationId,
         turnId = turnId,
         role = role,

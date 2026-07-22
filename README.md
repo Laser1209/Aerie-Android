@@ -11,11 +11,13 @@ debug-only local preview shell. The authentication client now implements the
 frozen Phase 2 login, refresh, logout, stable-error, and secure token contracts.
 Production owner login, one-time pairing, Keystore-backed session restoration,
 and Refresh Token rotation have passed on the target vivo phone. The persistent
-chat batches now include account-scoped Room storage, paged history, idempotent
-request submission, manual offline confirmation, status/cancel/retry contracts,
-filtered SSE reconnect with a persisted event cursor, and a Compose/ViewModel
-chat and task surface. Foreground services and the integrated real-device
-business flow remain the next Phase 3/4 gate.
+chat batches now include account-scoped Room v2 storage, paged history,
+server-authoritative `messageOrder` sorting for same-timestamp replies,
+idempotent request submission, manual offline confirmation, status/cancel/retry
+contracts, filtered SSE reconnect with a persisted event cursor, and a
+Compose/ViewModel chat and task surface. Foreground service and notification
+scaffolding is present; the integrated real-device business flow remains the
+next Phase 3/4 gate.
 
 Implementation evidence:
 

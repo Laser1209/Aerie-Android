@@ -38,19 +38,19 @@ The integrated command was:
 
 Result:
 
-- 22 JVM tests, 0 failures, 0 errors, 0 skips.
-- Debug APK: 65,786,538 bytes.
+- 27 JVM tests, 0 failures, 0 errors, 0 skips.
+- Debug APK: 65,937,058 bytes.
 - Debug APK SHA-256:
-  `C291939F9AAD7B59AD8CCB45B2D3A21D7049E4A9C0B6D0E78915FDD020A95B1A`.
+  `49ECB0238C92F996F7B5DF026FB878AB087D49654EF77DB96E029352BFD84C7C`.
 - Android Lint: `No issues found`.
 
-The target vivo phone was disconnected during this batch. No APK install,
-credential entry, pairing-code generation, production database change, or
-server configuration change was performed.
+The target vivo phone executed the Compose and Room instrumented suite: 5 tests
+passed with 0 failures, errors, or skips. The current app opens at login because
+the secure-session preference file is empty; no credential or token was entered
+by automation.
 
 ## Remaining Gate
 
-- Add the foreground `dataSync` service and notification permission flow.
-- Run Compose instrumented coverage on a connected device or emulator.
-- Install this integrated APK with retention enabled and verify production
-  history, one request, desktop/mobile sharing, and SSE recovery.
+- Capture a real foreground `dataSync` notification during a long-running task.
+- Re-authenticate the owner and verify production history, one request,
+  desktop/mobile sharing, and SSE recovery with the retained APK.

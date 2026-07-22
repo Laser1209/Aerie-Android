@@ -27,10 +27,12 @@ android {
     buildTypes {
         debug {
             buildConfigField("boolean", "ALLOW_LOCAL_PREVIEW", "true")
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"http://127.0.0.1:7891\"")
         }
         release {
             isMinifyEnabled = true
             buildConfigField("boolean", "ALLOW_LOCAL_PREVIEW", "false")
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://aerie.etta.top\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -62,6 +64,7 @@ kotlin {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

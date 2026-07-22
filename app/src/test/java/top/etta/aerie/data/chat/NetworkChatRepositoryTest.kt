@@ -107,6 +107,31 @@ class NetworkChatRepositoryTest {
     }
 
     @Test
+    fun `synchronize preserves server order when message timestamps match`() = runTest {
+        server.enqueue(
+            jsonResponse(
+                messagePage(
+                    items = listOf(
+                        message("msg-z-user", "question", messageOrder = 100),
+                        message("msg-a-answer-1", "answer 1", messageOrder = 101),
+                        message("msg-y-answer-2", "answer 2", messageOrder = 102),
+                        message("msg-b-answer-3", "answer 3", messageOrder = 103),
+                    ),
+                    hasMore = false,
+                ),
+            ),
+        )
+
+        val result = repository().synchronize(ACCOUNT_ID)
+
+        assertTrue(result is ChatOperationResult.Success)
+        assertEquals(
+            listOf("msg-z-user", "msg-a-answer-1", "msg-y-answer-2", "msg-b-answer-3"),
+            local.observeMessages(ACCOUNT_ID).first().map { it.messageId },
+        )
+    }
+
+    @Test
     fun `uncertain submit waits for confirmation and reuses client request id`() = runTest {
         val submittedIds = mutableListOf<String>()
         var attempt = 0
@@ -178,7 +203,7 @@ class NetworkChatRepositoryTest {
             sseResponse(
                 "id: evt_1\n" +
                     "event: message.created\n" +
-                    "data: {\"messageId\":\"msg_1\",\"conversationId\":\"conv_1\",\"role\":\"assistant\",\"content\":\"hello\",\"createdAt\":\"2026-07-22T00:00:00Z\"}\n\n",
+                    "data: {\"messageId\":\"msg_1\",\"messageOrder\":1,\"conversationId\":\"conv_1\",\"role\":\"assistant\",\"content\":\"hello\",\"createdAt\":\"2026-07-22T00:00:00Z\"}\n\n",
             ),
         )
         server.enqueue(
@@ -243,8 +268,12 @@ class NetworkChatRepositoryTest {
         )
     }
 
-    private fun message(id: String, content: String): String =
-        """{"messageId":"$id","conversationId":"conv_1","turnId":"turn_1","role":"user","content":"$content","attachments":[],"createdAt":"2026-07-22T00:00:00Z"}"""
+    private fun message(
+        id: String,
+        content: String,
+        messageOrder: Long = id.removePrefix("msg_").toLongOrNull() ?: 1L,
+    ): String =
+        """{"messageId":"$id","messageOrder":$messageOrder,"conversationId":"conv_1","turnId":"turn_1","role":"user","content":"$content","attachments":[],"createdAt":"2026-07-22T00:00:00Z"}"""
 
     private fun messagePage(items: List<String>, hasMore: Boolean): String =
         """{"items":[${items.joinToString(",")}],"hasMore":$hasMore}"""
@@ -318,7 +347,9 @@ class NetworkChatRepositoryTest {
         private val cursors = mutableMapOf<String, ChatSyncCursor>()
 
         override fun observeMessages(accountId: String): Flow<List<ChatMessage>> =
-            messages.map { rows -> rows.filter { it.accountId == accountId }.sortedBy { it.messageId } }
+            messages.map { rows ->
+                rows.filter { it.accountId == accountId }.sortedBy { it.messageOrder }
+            }
 
         override fun observeRequests(accountId: String): Flow<List<ChatRequestRecord>> =
             requests.map { rows -> rows.filter { it.accountId == accountId } }

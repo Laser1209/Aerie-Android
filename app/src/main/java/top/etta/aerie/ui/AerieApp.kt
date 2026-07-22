@@ -79,6 +79,7 @@ import top.etta.aerie.data.chat.PendingOutbound
 import top.etta.aerie.data.session.LoginInput
 import top.etta.aerie.data.session.SessionState
 import top.etta.aerie.data.session.UserRole
+import top.etta.aerie.sync.ForegroundSyncCapability
 
 @Composable
 fun AerieApp(viewModel: AerieViewModel) {
@@ -690,6 +691,7 @@ private fun SettingsScreen(
     viewModel: AerieViewModel,
 ) {
     val action by viewModel.chatActionState.collectAsStateWithLifecycle()
+    val foregroundCapability by viewModel.foregroundSyncCapability.collectAsStateWithLifecycle()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -704,6 +706,21 @@ private fun SettingsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (!isLocalPreview) {
+            Text(
+                text = when (foregroundCapability) {
+                    ForegroundSyncCapability.Available -> "后台状态通知可用"
+                    ForegroundSyncCapability.NotificationsUnavailable ->
+                        "通知权限关闭，后台状态同步已降级"
+                    ForegroundSyncCapability.StartRestricted ->
+                        "系统当前限制后台状态同步"
+                },
+                color = if (foregroundCapability == ForegroundSyncCapability.Available) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
             Button(
                 onClick = viewModel::synchronizeChat,
                 enabled = !action.isBusy,

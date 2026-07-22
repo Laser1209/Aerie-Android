@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 data class ChatMessage(
     val accountId: String,
     val messageId: String,
+    val messageOrder: Long,
     val conversationId: String,
     val turnId: String?,
     val role: String,

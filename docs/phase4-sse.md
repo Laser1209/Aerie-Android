@@ -22,6 +22,9 @@ real-device business acceptance is complete.
 - `message.created` and `request.updated` frames are merged into the existing
   account-scoped Room store. Approval and file frames are acknowledged by the
   cursor until their feature-specific stores are implemented.
+- `message.created` carries the server `messageOrder`; the Room message query
+  uses it as the primary display order so equal timestamps and random IDs
+  cannot reorder a multi-segment assistant response.
 - Event cursors only move forward by the numeric `evt_` sequence. Duplicate or
   out-of-order frames cannot move a stored cursor backwards.
 - A reconnect loop that re-synchronizes messages and active requests after a
@@ -49,9 +52,10 @@ Coverage includes:
 - MockWebServer disconnect, Room-store event application, and reconnect with
   the persisted `evt_1` cursor.
 
-The Android device was disconnected for this batch. No device installation,
-login, production database, server configuration, or Cloudflare state was
-changed.
+The vivo `V2516A` executed the integrated instrumented suite after the ordering
+contract was added: 5 tests passed with 0 failures, errors, or skips. No server
+database or Cloudflare state was changed. A real authenticated SSE session is
+still pending because the current secure-session store is empty.
 
 ## Remaining Gate
 

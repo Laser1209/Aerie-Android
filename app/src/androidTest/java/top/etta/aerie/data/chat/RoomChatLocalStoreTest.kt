@@ -81,9 +81,32 @@ class RoomChatLocalStoreTest {
         )
     }
 
-    private fun message(accountId: String, messageId: String, content: String) = ChatMessage(
+    @Test
+    fun messagesUseServerOrderWhenCreatedAtIsIdentical() = runBlocking {
+        store.upsertMessages(
+            listOf(
+                message("acct_owner", "msg-z-user", "question", messageOrder = 10),
+                message("acct_owner", "msg-a-answer-1", "answer 1", messageOrder = 11),
+                message("acct_owner", "msg-y-answer-2", "answer 2", messageOrder = 12),
+                message("acct_owner", "msg-b-answer-3", "answer 3", messageOrder = 13),
+            ),
+        )
+
+        assertEquals(
+            listOf("msg-z-user", "msg-a-answer-1", "msg-y-answer-2", "msg-b-answer-3"),
+            store.observeMessages("acct_owner").first().map { it.messageId },
+        )
+    }
+
+    private fun message(
+        accountId: String,
+        messageId: String,
+        content: String,
+        messageOrder: Long = 1,
+    ) = ChatMessage(
         accountId = accountId,
         messageId = messageId,
+        messageOrder = messageOrder,
         conversationId = "conv_$accountId",
         turnId = null,
         role = "user",

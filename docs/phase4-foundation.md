@@ -119,3 +119,18 @@ Not yet claimed:
   `D24B613C6B6576FDC1FF8785EA39B524A4FEFF1A0471A7DF601B20F2F1440542`.
 - This artifact is not a distributable release. Signing-key creation and signed
   APK installation remain deferred until the release phase.
+
+## Ordering and Integrated-Test Addendum
+
+The persistent chat implementation has since advanced to Room v2. The server
+now supplies `messageOrder` in both history items and `message.created` events;
+the client uses it as the primary display order for same-timestamp replies.
+The v1 to v2 migration preserves cached messages and clears synchronization
+cursors so the next authenticated sync repopulates authoritative order values.
+
+The current Debug APK is 65,937,058 bytes with SHA-256
+`49ECB0238C92F996F7B5DF026FB878AB087D49654EF77DB96E029352BFD84C7C`.
+The vivo `V2516A` executed the retained-APK instrumented suite: 5 tests passed
+with 0 failures, errors, or skips. The installed app currently has an empty
+secure-session preference file and opens at login; production history and SSE
+acceptance remain pending owner re-authentication.

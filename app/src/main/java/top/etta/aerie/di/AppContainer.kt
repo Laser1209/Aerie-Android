@@ -13,6 +13,8 @@ import top.etta.aerie.data.remote.ServerUrlPolicy
 import top.etta.aerie.data.security.AndroidKeystoreSessionStore
 import top.etta.aerie.data.session.NetworkSessionRepository
 import top.etta.aerie.data.session.SessionRepository
+import top.etta.aerie.sync.AndroidForegroundSyncController
+import top.etta.aerie.sync.ForegroundSyncController
 
 class AppContainer(context: Context) {
     val applicationContext: Context = context.applicationContext
@@ -34,4 +36,6 @@ class AppContainer(context: Context) {
         errorMapper = MobileApiErrorMapper(),
         eventStreamFactory = apiFactory::createEventStream,
     )
+    val foregroundSyncController: ForegroundSyncController =
+        AndroidForegroundSyncController(applicationContext)
 }

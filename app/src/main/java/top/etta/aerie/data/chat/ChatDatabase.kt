@@ -10,17 +10,22 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.ColumnInfo
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 @Entity(
     tableName = "chat_messages",
     primaryKeys = ["accountId", "messageId"],
-    indices = [Index(value = ["accountId", "createdAt"])],
+    indices = [Index(value = ["accountId", "messageOrder"])],
 )
 data class ChatMessageEntity(
     val accountId: String,
     val messageId: String,
+    @ColumnInfo(defaultValue = "0")
+    val messageOrder: Long,
     val conversationId: String,
     val turnId: String?,
     val role: String,
@@ -73,7 +78,7 @@ data class ChatSyncCursorEntity(
 interface ChatDao {
     @Query(
         """SELECT * FROM chat_messages WHERE accountId = :accountId
-           ORDER BY createdAt ASC, messageId ASC""",
+           ORDER BY messageOrder ASC, createdAt ASC, messageId ASC""",
     )
     fun observeMessages(accountId: String): Flow<List<ChatMessageEntity>>
 
@@ -151,7 +156,7 @@ interface ChatDao {
         PendingOutboundEntity::class,
         ChatSyncCursorEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class AerieChatDatabase : RoomDatabase() {
@@ -162,7 +167,24 @@ abstract class AerieChatDatabase : RoomDatabase() {
             context.applicationContext,
             AerieChatDatabase::class.java,
             "aerie_mobile_chat.db",
-        ).build()
+        ).addMigrations(MIGRATION_1_2).build()
+    }
+}
+
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "ALTER TABLE chat_messages ADD COLUMN messageOrder INTEGER NOT NULL DEFAULT 0",
+        )
+        database.execSQL(
+            "UPDATE chat_messages SET messageOrder = rowid WHERE messageOrder = 0",
+        )
+        database.execSQL("DROP INDEX IF EXISTS index_chat_messages_accountId_createdAt")
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_chat_messages_accountId_messageOrder " +
+                "ON chat_messages (accountId, messageOrder)",
+        )
+        database.execSQL("DELETE FROM chat_sync_cursors")
     }
 }
 
@@ -231,11 +253,13 @@ class RoomChatLocalStore(
 }
 
 private fun ChatMessageEntity.toDomain() = ChatMessage(
-    accountId, messageId, conversationId, turnId, role, content, attachmentsJson, createdAt,
+    accountId, messageId, messageOrder, conversationId, turnId, role, content, attachmentsJson,
+    createdAt,
 )
 
 private fun ChatMessage.toEntity() = ChatMessageEntity(
-    accountId, messageId, conversationId, turnId, role, content, attachmentsJson, createdAt,
+    accountId, messageId, messageOrder, conversationId, turnId, role, content, attachmentsJson,
+    createdAt,
 )
 
 private fun ChatRequestEntity.toDomain() = ChatRequestRecord(
