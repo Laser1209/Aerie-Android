@@ -7,8 +7,10 @@ Native Android companion client for Aerie.
 The Phase 4 Android foundation is under active development. The project now
 contains a reproducible Gradle 8.11.1 wrapper, a Kotlin and Compose app module,
 manual dependency injection, MVVM session state, login and pairing UI, and a
-debug-only local preview shell. Real authentication and chat integration remain
-gated by the server-side Phase 2 and Phase 3 contracts.
+debug-only local preview shell. The authentication client now implements the
+frozen Phase 2 login, refresh, logout, stable-error, and secure token contracts.
+Production login and chat integration remain gated by owner provisioning and
+server-side Phase 2/3 activation.
 
 ## Build
 
@@ -21,10 +23,21 @@ Prerequisites:
 From this repository:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 ```
 
 The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+
+Release compilation and lint verification can be run without creating signing
+credentials:
+
+```powershell
+.\gradlew.bat :app:assembleRelease :app:lintRelease --no-daemon
+```
+
+The resulting `app-release-unsigned.apk` is verification evidence only. A
+fixed private signing key will be created during the release phase and must
+never be committed.
 
 ## Repository Boundary
 

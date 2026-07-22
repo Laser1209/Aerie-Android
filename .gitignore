@@ -19,6 +19,8 @@ key.properties
 captures/
 *.apk
 *.aab
+hs_err_pid*.log
+replay_pid*.log
 
 # Operating system files
 .DS_Store

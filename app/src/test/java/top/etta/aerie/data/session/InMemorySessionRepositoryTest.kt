@@ -47,7 +47,7 @@ class InMemorySessionRepositoryTest {
     }
 
     @Test
-    fun `debug preview preserves role and logout clears session`() {
+    fun `debug preview preserves role and logout clears session`() = runTest {
         repository.enterLocalPreview(UserRole.Owner)
 
         val signedIn = repository.session.value as SessionState.SignedIn

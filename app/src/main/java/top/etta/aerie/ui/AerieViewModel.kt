@@ -26,6 +26,12 @@ class AerieViewModel(
     private val mutableLoginUiState = MutableStateFlow(LoginUiState())
     val loginUiState: StateFlow<LoginUiState> = mutableLoginUiState.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            sessionRepository.restoreSession()
+        }
+    }
+
     fun login(input: LoginInput) {
         if (mutableLoginUiState.value.isSubmitting) return
         viewModelScope.launch {
@@ -43,7 +49,9 @@ class AerieViewModel(
     }
 
     fun logout() {
-        sessionRepository.logout()
+        viewModelScope.launch {
+            sessionRepository.logout()
+        }
     }
 }
 

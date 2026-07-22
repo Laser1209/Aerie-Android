@@ -20,12 +20,21 @@ Implemented:
 - Login, password, pairing code, device name, and server URL inputs.
 - Owner and guest debug previews that are disabled in release builds.
 - Chat, task, file, and settings navigation surfaces.
+- Retrofit/kotlinx.serialization authentication DTO and API contracts.
+- Stable server-error mapping and an authorized 401 refresh/retry executor.
+- Mutex-protected Refresh Token rotation for concurrent requests.
+- Access Token memory-only storage and AES-GCM Android Keystore protection for
+  the Refresh Token ciphertext stored in DataStore.
+- Release HTTPS enforcement; Debug cleartext is limited by client validation to
+  localhost, `127.0.0.1`, and emulator `10.0.2.2` test endpoints.
 
 Not yet claimed:
 
-- Real account authentication or token persistence.
+- Successful production account authentication; the owner account is not yet
+  provisioned on the server.
 - Persistent chat, SSE, files, approvals, or background execution.
-- APK installation or business-flow verification on the target phone.
+- Keystore encryption round-trip with a real issued Refresh Token.
+- Authenticated business-flow verification on the target phone.
 
 ## Evidence
 
@@ -45,3 +54,43 @@ Not yet claimed:
   start and the application process remained running.
 - Local gateway and real business-flow verification remain gated by server
   Phase 2/3.
+
+## Authentication Client Evidence
+
+- `gradlew.bat :app:clean :app:testDebugUnitTest :app:assembleDebug
+  :app:lintDebug --no-daemon`: passed.
+- 11 JVM tests passed with 0 failures/errors/skips. MockWebServer covers login,
+  stable errors, one-time mutex refresh under 12 concurrent callers, 401 refresh
+  and retry, and local logout while the backend is unreachable.
+- Android Lint: `No issues found`.
+- Installed authentication-batch APK size: 65,610,280 bytes.
+- Installed authentication-batch APK SHA-256:
+  `677818D2F07B78C4937D707330D06D40E1EE6471903712FFDD10BC7F9E7E81C1`.
+- `adb install -r` passed on vivo `V2516A`, Android 16/API 36. The updated APK
+  cold-started in 1.905 seconds, remained running, and produced no Aerie fatal
+  startup logs.
+- Startup verifies that the empty-session DataStore/Keystore restoration path
+  does not crash. Token encryption with a real issued token remains part of the
+  production login gate.
+
+## Release Build Evidence
+
+- The first Release attempt exhausted native JVM memory during R8 with a 3 GB
+  heap and unrestricted worker concurrency; this was a build-host resource
+  failure, not a Kotlin, Android, or R8 compilation error.
+- The reproducible Gradle baseline now uses a 1.5 GB heap, a 512 MB Metaspace
+  cap, two workers, and disabled parallel project execution for this 16 GB
+  Windows build host.
+- `gradlew.bat :app:assembleRelease :app:lintRelease --no-daemon`: passed in
+  2 minutes 40 seconds; Release Lint reported `No issues found`.
+- A subsequent clean Debug and Release verification completed all 108 requested
+  tasks in 52 seconds with both Lint variants reporting `No issues found` and
+  all 11 JVM tests passing.
+- The merged Release manifest contains `android:usesCleartextTraffic="false"`.
+- Latest clean Debug APK size: 65,491,626 bytes; SHA-256:
+  `2A9F60F8990648CE12A1CACC4226DDBCE92FAD4EAFB0974F18426CEE17E80FB3`.
+- Unsigned Release APK size: 4,486,789 bytes.
+- Unsigned Release APK SHA-256:
+  `D24B613C6B6576FDC1FF8785EA39B524A4FEFF1A0471A7DF601B20F2F1440542`.
+- This artifact is not a distributable release. Signing-key creation and signed
+  APK installation remain deferred until the release phase.
