@@ -46,12 +46,17 @@ class MobileApiFactory(
         .writeTimeout(30, TimeUnit.SECONDS)
         .build(),
 ) {
-    fun create(baseUrl: String): MobileAuthApi = Retrofit.Builder()
+    fun create(baseUrl: String): MobileAuthApi = retrofit(baseUrl)
+        .create(MobileAuthApi::class.java)
+
+    fun createChat(baseUrl: String): MobileChatApi = retrofit(baseUrl)
+        .create(MobileChatApi::class.java)
+
+    private fun retrofit(baseUrl: String): Retrofit = Retrofit.Builder()
         .baseUrl(baseUrl)
         .client(client)
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()
-        .create(MobileAuthApi::class.java)
 }
 
 data class MobileClientFailure(

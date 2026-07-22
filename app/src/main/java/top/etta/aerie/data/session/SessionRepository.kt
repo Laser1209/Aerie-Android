@@ -42,6 +42,7 @@ sealed interface LoginResult {
 interface SessionRepository {
     val session: StateFlow<SessionState>
     val accessToken: StateFlow<String?>
+    val serverUrl: StateFlow<String?>
 
     suspend fun login(input: LoginInput): LoginResult
     suspend fun restoreSession(): Boolean
@@ -55,6 +56,8 @@ class InMemorySessionRepository : SessionRepository {
     override val session: StateFlow<SessionState> = mutableSession.asStateFlow()
     private val mutableAccessToken = MutableStateFlow<String?>(null)
     override val accessToken: StateFlow<String?> = mutableAccessToken.asStateFlow()
+    private val mutableServerUrl = MutableStateFlow<String?>(null)
+    override val serverUrl: StateFlow<String?> = mutableServerUrl.asStateFlow()
 
     override suspend fun login(input: LoginInput): LoginResult {
         if (input.username.length !in 3..32) {
@@ -90,6 +93,7 @@ class InMemorySessionRepository : SessionRepository {
 
     override suspend fun logout() {
         mutableAccessToken.value = null
+        mutableServerUrl.value = null
         mutableSession.value = SessionState.SignedOut
     }
 }

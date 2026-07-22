@@ -28,6 +28,9 @@ class NetworkSessionRepository(
     private val mutableAccessToken = MutableStateFlow<String?>(null)
     override val accessToken: StateFlow<String?> = mutableAccessToken.asStateFlow()
 
+    private val mutableServerUrl = MutableStateFlow<String?>(null)
+    override val serverUrl: StateFlow<String?> = mutableServerUrl.asStateFlow()
+
     private val authMutex = Mutex()
     private var activeApi: MobileAuthApi? = null
 
@@ -150,6 +153,7 @@ class NetworkSessionRepository(
             ),
         )
         activeApi = api
+        mutableServerUrl.value = serverUrl
         mutableAccessToken.value = response.accessToken
         mutableSession.value = SessionState.SignedIn(
             ActiveSession(
@@ -165,6 +169,7 @@ class NetworkSessionRepository(
     private suspend fun clearLocalSession() {
         secureStore.clear()
         activeApi = null
+        mutableServerUrl.value = null
         mutableAccessToken.value = null
         mutableSession.value = SessionState.SignedOut
     }
