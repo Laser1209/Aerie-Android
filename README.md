@@ -4,10 +4,27 @@ Native Android companion client for Aerie.
 
 ## Status
 
-The repository is initialized for the Aerie v2 Android companion. No Android
-application source has been created yet. The Kotlin and Compose application is
-scheduled for Phase 4 only after the server-side account, identity, and
-persistent-chat gates have passed.
+The Phase 4 Android foundation is under active development. The project now
+contains a reproducible Gradle 8.11.1 wrapper, a Kotlin and Compose app module,
+manual dependency injection, MVVM session state, login and pairing UI, and a
+debug-only local preview shell. Real authentication and chat integration remain
+gated by the server-side Phase 2 and Phase 3 contracts.
+
+## Build
+
+Prerequisites:
+
+- JDK 17
+- Android SDK Platform 35
+- Android SDK Build Tools 35.0.0
+
+From this repository:
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug
+```
+
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Repository Boundary
 
