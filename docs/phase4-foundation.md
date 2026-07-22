@@ -6,8 +6,9 @@ Date: 2026-07-22
 
 ## Scope
 
-This batch establishes the buildable Android application foundation without
-claiming that server authentication or persistent chat is available.
+This document began with the buildable Android application foundation and now
+also records verified production authentication. It does not claim persistent
+chat until history, requests, and SSE pass the real-device gate.
 
 Implemented:
 
@@ -30,11 +31,9 @@ Implemented:
 
 Not yet claimed:
 
-- Successful production account authentication; the owner account is not yet
-  provisioned on the server.
-- Persistent chat, SSE, files, approvals, or background execution.
-- Keystore encryption round-trip with a real issued Refresh Token.
-- Authenticated business-flow verification on the target phone.
+- Persistent chat history, request execution, SSE, files, approvals, or
+  background execution.
+- Authenticated message and request synchronization on the target phone.
 
 ## Evidence
 
@@ -52,8 +51,8 @@ Not yet claimed:
 - ADB detected the only connected target as vivo `V2516A`, Android 16/API 36.
 - `adb install -r` passed, then `top.etta.aerie/.MainActivity` completed a cold
   start and the application process remained running.
-- Local gateway and real business-flow verification remain gated by server
-  Phase 2/3.
+- Local authentication is now verified; chat and request business-flow
+  verification remain gated by the unfinished Phase 3/4 client integration.
 
 ## Authentication Client Evidence
 
@@ -69,9 +68,35 @@ Not yet claimed:
 - `adb install -r` passed on vivo `V2516A`, Android 16/API 36. The updated APK
   cold-started in 1.905 seconds, remained running, and produced no Aerie fatal
   startup logs.
-- Startup verifies that the empty-session DataStore/Keystore restoration path
-  does not crash. Token encryption with a real issued token remains part of the
-  production login gate.
+- Startup first verified that the empty-session DataStore/Keystore restoration
+  path does not crash. The real issued-token round trip is recorded below.
+
+## Real Device Authentication Evidence
+
+- ADB detected one target, vivo `V2516A` on Android 16/API 36, and established
+  `tcp:7891 -> tcp:7891` reverse. The Debug client used only
+  `http://127.0.0.1:7891`; port `7890` was not exposed to the phone.
+- Production owner login succeeded with a password entered through the phone's
+  secure keyboard and a locally displayed one-time pairing code. No credential
+  or token value was copied into documentation, logs, or Git.
+- The server recorded one active device, one active Refresh Token, a consumed
+  pairing session, and `auth.login success` after the first login.
+- After `adb shell am force-stop top.etta.aerie`, a cold start completed in
+  1.236 seconds and restored the owner screen without another login. The server
+  then held two rows in one Refresh Token family: the old row was revoked and
+  linked to its replacement, while exactly one new row remained active. This
+  verifies Keystore encryption, DataStore persistence, Keystore decryption,
+  and server rotation with a real issued Refresh Token.
+- OriginOS intentionally blocked screenshots while its secure keyboard was
+  active. After it closed, the owner identity and navigation were confirmed by
+  screenshot and UI hierarchy. A scan of 65 post-restart App log lines found
+  zero password, pairing-code, token, Authorization, or Bearer key names.
+- Server mobile identity/API/gateway regression: 36 tests passed, including
+  pairing-code single-use behavior. Android
+  `:app:testDebugUnitTest --rerun-tasks` executed all 11 JVM tests with zero
+  failures, errors, or skips.
+- This evidence verifies authentication and session recovery only. Persistent
+  history, request submission/status, and SSE are still incomplete.
 
 ## Release Build Evidence
 

@@ -9,8 +9,9 @@ contains a reproducible Gradle 8.11.1 wrapper, a Kotlin and Compose app module,
 manual dependency injection, MVVM session state, login and pairing UI, and a
 debug-only local preview shell. The authentication client now implements the
 frozen Phase 2 login, refresh, logout, stable-error, and secure token contracts.
-Production login and chat integration remain gated by owner provisioning and
-server-side Phase 2/3 activation.
+Production owner login, one-time pairing, Keystore-backed session restoration,
+and Refresh Token rotation have passed on the target vivo phone. Persistent
+chat history, requests, and SSE remain the next Phase 3/4 integration gate.
 
 ## Build
 
