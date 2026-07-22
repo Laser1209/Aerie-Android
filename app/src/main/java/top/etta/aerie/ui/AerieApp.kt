@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -22,10 +24,14 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PersonOutline
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,6 +50,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -59,8 +67,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import top.etta.aerie.BuildConfig
 import top.etta.aerie.R
+import top.etta.aerie.data.chat.ChatConnectionStatus
+import top.etta.aerie.data.chat.ChatMessage
+import top.etta.aerie.data.chat.ChatRequestRecord
+import top.etta.aerie.data.chat.PendingOutbound
 import top.etta.aerie.data.session.LoginInput
 import top.etta.aerie.data.session.SessionState
 import top.etta.aerie.data.session.UserRole
@@ -69,6 +84,15 @@ import top.etta.aerie.data.session.UserRole
 fun AerieApp(viewModel: AerieViewModel) {
     val sessionState by viewModel.session.collectAsStateWithLifecycle()
     val loginUiState by viewModel.loginUiState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.onForeground()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     when (val current = sessionState) {
         SessionState.SignedOut -> LoginScreen(
@@ -81,6 +105,7 @@ fun AerieApp(viewModel: AerieViewModel) {
             role = current.session.role,
             isLocalPreview = current.session.isLocalPreview,
             onLogout = viewModel::logout,
+            viewModel = viewModel,
         )
     }
 }
@@ -273,6 +298,7 @@ private fun MainShell(
     role: UserRole,
     isLocalPreview: Boolean,
     onLogout: () -> Unit,
+    viewModel: AerieViewModel,
 ) {
     val destinations = remember {
         listOf(
@@ -321,10 +347,10 @@ private fun MainShell(
         },
     ) { innerPadding ->
         when (selectedIndex) {
-            0 -> ChatScreen(innerPadding, isLocalPreview)
-            1 -> EmptyOperationalScreen(innerPadding, "暂无执行中的任务")
+            0 -> ChatScreen(innerPadding, isLocalPreview, viewModel)
+            1 -> TaskScreen(innerPadding, isLocalPreview, viewModel)
             2 -> EmptyOperationalScreen(innerPadding, "暂无可用文件")
-            else -> SettingsScreen(innerPadding, role, isLocalPreview)
+            else -> SettingsScreen(innerPadding, role, isLocalPreview, viewModel)
         }
     }
 }
@@ -333,8 +359,19 @@ private fun MainShell(
 private fun ChatScreen(
     contentPadding: PaddingValues,
     isLocalPreview: Boolean,
+    viewModel: AerieViewModel,
 ) {
     var draft by remember { mutableStateOf("") }
+    val messages by viewModel.chatMessages.collectAsStateWithLifecycle()
+    val pending by viewModel.pendingOutbound.collectAsStateWithLifecycle()
+    val connection by viewModel.chatConnection.collectAsStateWithLifecycle()
+    val action by viewModel.chatActionState.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -355,17 +392,56 @@ private fun ChatScreen(
                 )
             }
         }
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "暂无消息",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (!isLocalPreview) {
+            ConnectionBanner(connection.status, connection.retryDelaySeconds)
+        }
+        pending.forEach { item ->
+            PendingConfirmationRow(
+                pending = item,
+                enabled = !action.isBusy,
+                onConfirm = { viewModel.confirmPending(item.clientRequestId) },
             )
+        }
+        if (action.errorMessage != null) {
+            Text(
+                text = action.errorMessage.orEmpty(),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
+        }
+        if (messages.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (!isLocalPreview && connection.status == ChatConnectionStatus.Connecting) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+                    Text(
+                        text = if (isLocalPreview) "本地预览暂无消息" else "暂无消息",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(messages, key = { it.messageId }) { message ->
+                    MessageBubble(message)
+                }
+            }
         }
         HorizontalDivider()
         Row(
@@ -383,14 +459,208 @@ private fun ChatScreen(
                 maxLines = 5,
             )
             IconButton(
-                onClick = { draft = "" },
-                enabled = draft.isNotBlank() && !isLocalPreview,
+                onClick = {
+                    val content = draft
+                    draft = ""
+                    viewModel.sendMessage(content)
+                },
+                enabled = draft.isNotBlank() && !isLocalPreview && !action.isBusy,
                 modifier = Modifier.size(52.dp),
             ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
             }
         }
     }
+}
+
+@Composable
+private fun ConnectionBanner(
+    status: ChatConnectionStatus,
+    retryDelaySeconds: Int?,
+) {
+    val label = when (status) {
+        ChatConnectionStatus.Idle -> "等待连接"
+        ChatConnectionStatus.Connecting -> "正在连接电脑"
+        ChatConnectionStatus.Connected -> "已连接电脑"
+        ChatConnectionStatus.Reconnecting ->
+            "连接中断${retryDelaySeconds?.let { "，${it} 秒后重试" } ?: "，准备重试"}"
+        ChatConnectionStatus.Offline -> "电脑端暂时不可用"
+    }
+    val tint = when (status) {
+        ChatConnectionStatus.Connected -> MaterialTheme.colorScheme.primary
+        ChatConnectionStatus.Offline -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val icon = when (status) {
+        ChatConnectionStatus.Connected -> Icons.Default.Check
+        ChatConnectionStatus.Connecting, ChatConnectionStatus.Reconnecting -> Icons.Default.Sync
+        else -> Icons.Default.CloudOff
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = tint)
+    }
+}
+
+@Composable
+private fun MessageBubble(message: ChatMessage) {
+    val isUser = message.role == "user"
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+    ) {
+        Surface(
+            color = if (isUser) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.secondaryContainer
+            },
+            shape = RoundedCornerShape(8.dp),
+        ) {
+            Text(
+                text = message.content,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                color = if (isUser) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                },
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PendingConfirmationRow(
+    pending: PendingOutbound,
+    enabled: Boolean,
+    onConfirm: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "待确认：${pending.text}",
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Button(onClick = onConfirm, enabled = enabled) {
+                Icon(Icons.Default.Check, contentDescription = null)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("确认发送")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TaskScreen(
+    contentPadding: PaddingValues,
+    isLocalPreview: Boolean,
+    viewModel: AerieViewModel,
+) {
+    val requests by viewModel.chatRequests.collectAsStateWithLifecycle()
+    val action by viewModel.chatActionState.collectAsStateWithLifecycle()
+    if (isLocalPreview || requests.isEmpty()) {
+        EmptyOperationalScreen(contentPadding, if (isLocalPreview) "本地预览暂无任务" else "暂无执行中的任务")
+        return
+    }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(contentPadding),
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(requests, key = { it.requestId }) { request ->
+            RequestRow(
+                request = request,
+                enabled = !action.isBusy,
+                onCancel = { viewModel.cancelRequest(request.requestId) },
+                onRetry = { viewModel.retryRequest(request.requestId) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RequestRow(
+    request: ChatRequestRecord,
+    enabled: Boolean,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    val active = request.status in setOf("queued", "running", "cancel_requested")
+    val retryable = request.status in setOf("failed", "cancelled")
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = requestStatusLabel(request.status),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                request.errorCode?.let { code ->
+                    Text(
+                        text = "错误：$code",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                Text(
+                    text = request.requestId,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (active) {
+                IconButton(onClick = onCancel, enabled = enabled) {
+                    Icon(Icons.Default.Close, contentDescription = "取消任务")
+                }
+            } else if (retryable) {
+                IconButton(onClick = onRetry, enabled = enabled) {
+                    Icon(Icons.Default.Refresh, contentDescription = "重试任务")
+                }
+            }
+        }
+    }
+}
+
+private fun requestStatusLabel(status: String): String = when (status) {
+    "queued" -> "排队中"
+    "running" -> "执行中"
+    "cancel_requested" -> "正在取消"
+    "completed" -> "已完成"
+    "failed" -> "执行失败"
+    "cancelled" -> "已取消"
+    else -> status
 }
 
 @Composable
@@ -417,7 +687,9 @@ private fun SettingsScreen(
     contentPadding: PaddingValues,
     role: UserRole,
     isLocalPreview: Boolean,
+    viewModel: AerieViewModel,
 ) {
+    val action by viewModel.chatActionState.collectAsStateWithLifecycle()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -431,5 +703,15 @@ private fun SettingsScreen(
             text = if (isLocalPreview) "本地预览会话" else "已认证设备会话",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (!isLocalPreview) {
+            Button(
+                onClick = viewModel::synchronizeChat,
+                enabled = !action.isBusy,
+            ) {
+                Icon(Icons.Default.Sync, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("立即同步")
+            }
+        }
     }
 }

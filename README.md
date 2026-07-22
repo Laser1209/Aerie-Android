@@ -13,14 +13,16 @@ Production owner login, one-time pairing, Keystore-backed session restoration,
 and Refresh Token rotation have passed on the target vivo phone. The persistent
 chat batches now include account-scoped Room storage, paged history, idempotent
 request submission, manual offline confirmation, status/cancel/retry contracts,
-and filtered SSE reconnect with a persisted event cursor. Compose integration
-and the integrated real-device business flow remain the next Phase 3/4 gate.
+filtered SSE reconnect with a persisted event cursor, and a Compose/ViewModel
+chat and task surface. Foreground services and the integrated real-device
+business flow remain the next Phase 3/4 gate.
 
 Implementation evidence:
 
 - [`docs/phase4-foundation.md`](docs/phase4-foundation.md)
 - [`docs/phase4-chat-data.md`](docs/phase4-chat-data.md)
 - [`docs/phase4-sse.md`](docs/phase4-sse.md)
+- [`docs/phase4-compose.md`](docs/phase4-compose.md)
 
 ## Build
 
