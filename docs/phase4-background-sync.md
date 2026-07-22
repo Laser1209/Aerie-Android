@@ -86,3 +86,27 @@ in this batch because the phone was intentionally disconnected. The next
 real-device batch must verify owner login, Room v2 full convergence, all seven
 segments of the reported long response in `messageOrder`, foreground
 notification privacy during a long task, and the persisted WorkManager job.
+
+## Prepared Instrumented Contract
+
+The follow-up device test package now includes two WorkManager tests using
+`androidx.work:work-testing:2.10.1`. They verify that repeated scheduling keeps
+one enqueued unique job with the expected tag and that cancellation transitions
+that job to `CANCELLED`. The tests also lock the 15-minute interval and
+five-minute retry-backoff constants. Test databases are explicitly closed after
+each method so the seven-test device suite can run in one instrumentation
+process.
+
+Desktop-only preparation evidence:
+
+- `:app:assembleDebugAndroidTest`: `BUILD SUCCESSFUL`.
+- `:app:lintDebug`: `BUILD SUCCESSFUL`; `No issues found`.
+- Existing JVM regression: 33 tests, 0 failures, errors, or skips.
+- Android test methods prepared: 7 total, including 2 WorkManager tests.
+- Test APK: 2,355,262 bytes; application ID `top.etta.aerie.test`, target
+  package `top.etta.aerie`.
+- Test APK SHA-256:
+  `495855344DCB6F73B4443B80CF963C6279B2EE90EA8CD0DFDC5EBF4223E2C11C`.
+
+These two tests are compiled but not marked passed. Their execution remains
+blocked on an explicit confirmation that the target phone is connected.
