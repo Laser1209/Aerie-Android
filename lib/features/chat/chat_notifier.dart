@@ -3,6 +3,7 @@
 
 import 'package:aerie_mobile/data/repository/chat_repository.dart';
 import 'package:aerie_mobile/features/chat/models/chat_message.dart';
+import 'package:aerie_mobile/features/chat/sse_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 发送操作状态。
@@ -46,6 +47,11 @@ final chatRepositoryProvider =
 final chatMessagesProvider = StreamProvider<List<ChatMessage>>((ref) {
   return ref.watch(chatRepositoryProvider).watchMessages();
 });
+
+/// 实时连接健康态（供 AppBar 状态胶囊）。默认未连接，装配点注入
+/// [SseController] 的 [SseController.healthStream] 后随连接实时更新。
+final connectionHealthProvider =
+    Provider<SseHealth>((ref) => SseHealth.disconnected);
 
 /// 发送区状态机（T2.1）Provider。
 final chatNotifierProvider =

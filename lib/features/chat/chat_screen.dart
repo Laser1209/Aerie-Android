@@ -2,6 +2,7 @@ import 'package:aerie_mobile/features/chat/chat_notifier.dart';
 import 'package:aerie_mobile/features/chat/message_bubble.dart';
 import 'package:aerie_mobile/features/chat/models/chat_message.dart';
 import 'package:aerie_mobile/features/chat/models/task_status.dart';
+import 'package:aerie_mobile/features/chat/sse_status_capsule.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -38,10 +39,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final messages = ref.watch(chatMessagesProvider);
     final sendState = ref.watch(chatNotifierProvider);
+    final connectionHealth = ref.watch(connectionHealthProvider);
     final sending = sendState.status == ChatSendStatus.sending;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('会话')),
+      appBar: AppBar(
+        title: const Text('会话'),
+        actions: [SseStatusCapsule(health: connectionHealth)],
+      ),
       body: Column(
         children: [
           Expanded(
