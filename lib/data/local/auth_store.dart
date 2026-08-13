@@ -1,12 +1,21 @@
 import 'package:aerie_mobile/data/remote/token_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// 认证仓库所依赖的令牌持久化抽象（§3.2.2，供 T1.4 注入与单测替换）。
+abstract interface class AuthTokenStore {
+  /// 写入访问令牌。
+  Future<void> setAccessToken(String token);
+
+  /// 写入刷新令牌。
+  Future<void> setRefreshToken(String token);
+}
+
 /// 令牌存储（§3.2.2）。
 ///
-/// 实现 [TokenProvider]，令牌读写走 flutter_secure_storage（Android
-/// `allowBackup=false` 已排除云备份）；刷新通过注入的 onRefresh 回调
-/// 委托给上层（auth_repository，T1.4）。
-class AuthStore implements TokenProvider {
+/// 同时实现网络层 [TokenProvider] 与认证仓库 [AuthTokenStore]，令牌读写
+/// 走 flutter_secure_storage（Android `allowBackup=false` 已排除云备份）；
+/// 刷新通过注入的 onRefresh 回调委托给上层（auth_repository，T1.4）。
+class AuthStore implements TokenProvider, AuthTokenStore {
   /// 创建 [AuthStore]。
   ///
   /// [onRefresh] 为空时刷新返回 null（401 重试直接放行失败）。
@@ -30,6 +39,7 @@ class AuthStore implements TokenProvider {
       _storage.write(key: _accessTokenKey, value: token);
 
   /// 持久化刷新令牌。
+  @override
   Future<void> setRefreshToken(String token) =>
       _storage.write(key: _refreshTokenKey, value: token);
 
