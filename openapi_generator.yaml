@@ -1,0 +1,6 @@
+# openapi_sdk_gen 配置（§3.2.1 API 代码生成）
+openapi_generator:
+  schema_path: api/openapi.json
+  output_directory: lib/gen
+  json_serializer: json_serializable
+  client_postfix: Client
