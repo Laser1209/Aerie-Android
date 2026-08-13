@@ -1,3 +1,0 @@
--keepattributes Signature,*Annotation*
-
--dontwarn javax.annotation.**

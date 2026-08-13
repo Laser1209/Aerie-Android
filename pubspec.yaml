@@ -1,0 +1,44 @@
+name: aerie_mobile
+description: "Aerie 移动端接收端（登录/会话、消息同步、文件与图片传输、指令发送、状态查看、审批）。智能推理与人格能力均在电脑端运行。"
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  cached_network_image: ^3.4.0  # 消息图片懒加载缓存（§3.2.5）
+  connectivity_plus: ^6.0.0  # 网络状态检测（§3.2.6）
+  crypto: ^3.0.0  # SHA-256 分块校验（§3.2.5）
+  cupertino_icons: ^1.0.8
+  dio: ^5.9.0  # HTTP + 拦截器 + 流式（§3.2.1）
+  drift: ^2.28.0  # 本地数据库（§3.2.2）
+  drift_flutter: ^0.2.0  # drift 的 Flutter 集成
+  file_picker: ^8.1.0  # SAF 文件选择（§3.2.5）
+  flutter:
+    sdk: flutter
+  flutter_foreground_task: ^8.0.0  # 传输前台服务保活（§3.2.5）
+  flutter_riverpod: ^3.0.0  # 状态管理（§3.2.0 D9 锁定）
+  flutter_secure_storage: ^9.2.0  # 令牌安全存储（§3.2.2）
+  json_annotation: ^4.9.0  # JSON 序列化注解（§3.2.1）
+  local_auth: ^2.3.0  # 审批生物识别（§3.2.8）
+  open_filex: ^4.5.0  # 下载后打开（§3.2.5）
+  path_provider: ^2.1.0  # 应用目录（日志落盘 §3.2.9）
+  retrofit: ^4.1.0  # 声明式 API（§3.2.1）
+  riverpod_annotation: ^3.0.0  # Riverpod 代码生成注解
+  sqlite3_flutter_libs: any  # drift 的 SQLite 原生库
+
+dev_dependencies:
+  build_runner: ^2.4.0  # 代码生成运行器
+  flutter_lints: ^6.0.0  # 基础 lint 规则
+  flutter_test:
+    sdk: flutter
+  json_serializable: ^6.9.0  # JSON 序列化代码生成
+  openapi_sdk_gen: ^2.3.2  # OpenAPI 客户端生成（§3.2.1）
+  retrofit_generator: ^10.0.0  # retrofit 代码生成
+  riverpod_generator: ^3.0.0  # Riverpod 代码生成
+  very_good_analysis: ^10.3.0  # 严格生产级 lint 规则集
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,15 @@
+# Aerie 移动端静态分析配置（§3.2.0 工程质量门槛：flutter analyze 零告警）
+# 使用 very_good_analysis（比 flutter_lints 更严格的生产级规则集）。
+include: package:very_good_analysis/analysis_options.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    # OpenAPI 代码生成产物（§3.2.1），不参与手写代码质量校验
+    - lib/gen/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**

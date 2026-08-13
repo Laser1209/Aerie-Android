@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug 网络安全配置（§3.2.8）：允许访问 http://127.0.0.1 与局域网明文（真机 Debug 经 adb reverse / 局域网 IP 连电脑 7891）。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
