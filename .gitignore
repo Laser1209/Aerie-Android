@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Flutter 截图目录（flutter screenshot / 运行期截图，不提交）
+/captures/
