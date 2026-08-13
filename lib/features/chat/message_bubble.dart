@@ -110,6 +110,7 @@ class _TaskBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color) = switch (status) {
       TaskStatus.sending => ('发送中', const Color(0xFF7FA8D9)),
+      TaskStatus.downloading => ('下载中', const Color(0xFF7FA8D9)),
       TaskStatus.canceled => ('已取消', const Color(0xFF8A7B82)),
       TaskStatus.failed => ('失败', const Color(0xFFE87C7C)),
       TaskStatus.completed => ('', Colors.transparent),

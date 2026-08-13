@@ -5,6 +5,9 @@ enum TaskStatus {
   /// 发送中。
   sending,
 
+  /// 下载中。
+  downloading,
+
   /// 已取消。
   canceled,
 
