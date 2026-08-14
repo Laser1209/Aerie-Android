@@ -1,6 +1,7 @@
 // JSON 夹具单行较长，属固定数据不拆行。
 // ignore_for_file: lines_longer_than_80_chars
 
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:aerie_mobile/data/local/chat_database.dart';
@@ -13,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// 按请求路径返回模拟消息/请求 JSON 的 HTTP 适配器。
 class _ChatAdapter implements HttpClientAdapter {
   final List<String> calls = [];
+  String? lastRequestBody;
 
   @override
   Future<ResponseBody> fetch(
@@ -21,6 +23,13 @@ class _ChatAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     calls.add('${options.method} ${options.path}');
+    if (requestStream != null) {
+      final buffer = BytesBuilder();
+      await requestStream.forEach(buffer.add);
+      if (buffer.length > 0) {
+        lastRequestBody = utf8.decode(buffer.toBytes());
+      }
+    }
     final body = _bodyFor(options.method, options.path);
     return ResponseBody.fromString(
       body,
@@ -125,15 +134,16 @@ void main() {
       expect(adapter.calls, contains('POST /api/mobile/v1/requests'));
     });
 
-    test('sendMessage 传递附件 fileIds', () async {
+    test('sendMessage 传递附件 fileIds（文本+附件）', () async {
       await repository.sendMessage(
-        text: '',
+        text: '看图',
         clientRequestId: 'x2',
         fileIds: const ['f1'],
       );
 
-      // POST 已被调用即通过；具体 body 由 retrofit 序列化（不重复断言）
       expect(adapter.calls, contains('POST /api/mobile/v1/requests'));
+      expect(adapter.lastRequestBody, contains('"f1"'));
+      expect(adapter.lastRequestBody, contains('"text":"看图"'));
     });
 
     test('cancelRequest / retryRequest 命中对应路由', () async {

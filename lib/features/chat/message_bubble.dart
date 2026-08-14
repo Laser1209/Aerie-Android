@@ -1,18 +1,30 @@
 import 'package:aerie_mobile/features/chat/models/chat_message.dart';
 import 'package:aerie_mobile/features/chat/models/task_status.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 /// 消息气泡（§3.2.10 / T2.1）。
 ///
 /// 对方（assistant）左对齐白气泡，用户（user）右对齐浅粉底气泡；附件渲染
-/// 为文件卡（图标 + 名 + 大小），可叠加任务状态徽章。纯展示，便于 Widget
-/// 测试。
+/// 为文件卡（图标 + 名 + 大小），图片附件用 [CachedNetworkImage] 懒加载；
+/// 可叠加任务状态徽章。纯展示，便于 Widget 测试。
 class MessageBubble extends StatelessWidget {
   /// 创建 [MessageBubble]。
-  const MessageBubble({required this.message, super.key, this.taskStatus});
+  ///
+  /// [baseUrl] 用于把相对附件 URL 拼成绝对地址（取移动网关 Debug/Release
+  /// baseUrl）；为空时图片附件回退为文件卡。
+  const MessageBubble({
+    required this.message,
+    this.baseUrl,
+    super.key,
+    this.taskStatus,
+  });
 
   /// 待展示的消息。
   final ChatMessage message;
+
+  /// 服务端 baseUrl（拼接图片附件绝对地址）。
+  final String? baseUrl;
 
   /// 可选任务状态（发送中/已取消/失败等）。
   final TaskStatus? taskStatus;
@@ -62,7 +74,11 @@ class MessageBubble extends StatelessWidget {
                       message.attachments.isNotEmpty)
                     const SizedBox(height: 8),
                   for (final attachment in message.attachments)
-                    _AttachmentCard(attachment: attachment, isUser: _isUser),
+                    _AttachmentCard(
+                      attachment: attachment,
+                      isUser: _isUser,
+                      baseUrl: baseUrl,
+                    ),
                   const SizedBox(height: 2),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -129,15 +145,51 @@ class _TaskBadge extends StatelessWidget {
   }
 }
 
-/// 附件文件卡（图标 + 名 + 大小）。
+/// 附件卡片：图片懒加载缩略图，其他类型显示文件卡。
 class _AttachmentCard extends StatelessWidget {
-  const _AttachmentCard({required this.attachment, required this.isUser});
+  const _AttachmentCard({
+    required this.attachment,
+    required this.isUser,
+    this.baseUrl,
+  });
 
   final ChatAttachment attachment;
   final bool isUser;
+  final String? baseUrl;
+
+  String? get _imageUrl {
+    final base = baseUrl;
+    if (!attachment.isImage || base == null) return null;
+    final url = attachment.url;
+    return url.startsWith('http') ? url : '$base$url';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = _imageUrl;
+    if (imageUrl != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: CachedNetworkImage(
+          imageUrl: imageUrl,
+          width: 184,
+          fit: BoxFit.cover,
+          placeholder: (_, _) => Container(
+            width: 184,
+            height: 120,
+            color: const Color(0xFFFCE4EC),
+            child: const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+          errorWidget: (_, _, _) => const SizedBox(
+            width: 184,
+            height: 120,
+            child: Icon(Icons.broken_image),
+          ),
+        ),
+      );
+    }
     return Container(
       width: 180,
       padding: const EdgeInsets.all(8),

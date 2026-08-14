@@ -1,3 +1,4 @@
+import 'package:aerie_mobile/data/remote/mobile_gateway_client.dart';
 import 'package:aerie_mobile/features/chat/chat_notifier.dart';
 import 'package:aerie_mobile/features/chat/message_bubble.dart';
 import 'package:aerie_mobile/features/chat/models/chat_message.dart';
@@ -61,6 +62,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     child: MessageBubble(
                       message: item,
+                      baseUrl: MobileGatewayClient.defaultBaseUrl(),
                       taskStatus: _taskStatusFor(item),
                     ),
                   );
